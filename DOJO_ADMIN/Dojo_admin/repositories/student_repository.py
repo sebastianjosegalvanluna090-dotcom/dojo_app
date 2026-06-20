@@ -185,3 +185,85 @@ class StudentRepository:
         finally:
             cur.close()
             db.release(conn)
+
+    def delete(self, student_id: int):
+        """Elimina estudiante y su persona asociada."""
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            # Obtener id_person antes de borrar
+            cur.execute("SELECT id_person FROM students WHERE id = %s", (student_id,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("Estudiante no encontrado")
+            person_id = row[0]
+
+            # Borrar en orden por FK: membresías → cinturones → estudiante → persona
+            cur.execute("DELETE FROM student_memberships WHERE id_student = %s", (student_id,))
+            cur.execute("DELETE FROM belts_students WHERE students_id = %s", (student_id,))
+            cur.execute("DELETE FROM students_belts_history WHERE id_student = %s", (student_id,))
+            cur.execute("DELETE FROM students WHERE id = %s", (student_id,))
+            cur.execute("DELETE FROM people WHERE id = %s", (person_id,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+            db.release(conn)
+
+    def get_detail(self, student_id: int) -> dict:
+        """Retorna detalle completo: membresía activa + cinturón actual."""
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT
+                    s.id,
+                    p.first_name || ' ' || p.last_name     AS nombre,
+                    COALESCE(td.type_document, '—')         AS tipo_doc,
+                    COALESCE(s.document, '—')               AS documento,
+                    COALESCE(p.phone, '—')                  AS telefono,
+                    COALESCE(p.email, '—')                  AS email,
+                    COALESCE(p.birthdate::text, '—')        AS nacimiento,
+                    COALESCE(st.status, '—')                AS estado,
+                    p.created_at::date                      AS fecha_ingreso,
+                    -- Membresía activa
+                    COALESCE(mp.name, 'Sin membresía')      AS membresia,
+                    COALESCE(sm.status, '—')                AS estado_mem,
+                    COALESCE(sm.start_date::text, '—')      AS inicio_mem,
+                    COALESCE(sm.end_date::text, '—')        AS fin_mem,
+                    COALESCE(
+                        sm.custom_fee::text,
+                        mp.monthly_fee::text,
+                        '—'
+                    )                                       AS cuota,
+                    -- Cinturón actual (último asignado)
+                    COALESCE(b.name, 'Sin cinturón')        AS cinturon,
+                    COALESCE(ma.name, '—')                  AS arte_marcial
+                FROM students s
+                JOIN people p ON p.id = s.id_person
+                LEFT JOIN type_document td ON td.id = s.id_type_document
+                LEFT JOIN status st        ON st.id = s.id_status
+                LEFT JOIN student_memberships sm
+                       ON sm.id_student = s.id AND sm.status = 'activo'
+                LEFT JOIN membership_plans mp ON mp.id = sm.id_membership_plan
+                LEFT JOIN belts_students bs   ON bs.students_id = s.id
+                LEFT JOIN belts b             ON b.id = bs.belts_id
+                LEFT JOIN martial_arts ma     ON ma.id = b.id_martial_art
+                WHERE s.id = %s
+                LIMIT 1
+            """, (student_id,))
+            row = cur.fetchone()
+            if not row:
+                return {}
+            keys = [
+                "id", "nombre", "tipo_doc", "documento", "telefono",
+                "email", "nacimiento", "estado", "fecha_ingreso",
+                "membresia", "estado_mem", "inicio_mem", "fin_mem",
+                "cuota", "cinturon", "arte_marcial"
+            ]
+            return dict(zip(keys, row))
+        finally:
+            cur.close()
+            db.release(conn)

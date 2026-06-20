@@ -43,12 +43,12 @@ class LoadWorker(QThread):
             self.done.emit([])
 
 
-# ─── DETALLE (modal) ──────────────────────────────────────────────────
+# ─── DETALLE AMPLIADO ─────────────────────────────────────────────────
 class StudentDetail(QDialog):
-    def __init__(self, row_data, parent=None):
+    def __init__(self, student_id, repo, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Detalle del Estudiante")
-        self.setFixedSize(420, 420)
+        self.setFixedSize(460, 560)
         self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self.setStyleSheet(f"background-color: #161616; color: {TEXT_PRI};")
 
@@ -69,28 +69,58 @@ class StudentDetail(QDialog):
         """)
         layout.addWidget(sep)
 
-        labels = [
-            ("ID",             str(row_data[0])),
-            ("Nombre",         str(row_data[1])),
-            ("Documento",      str(row_data[2])),
-            ("Teléfono",       str(row_data[3] or "—")),
-            ("Email",          str(row_data[4] or "—")),
-            ("Estado",         str(row_data[5])),
-            ("Arte Marcial",   str(row_data[6])),
-            ("Fecha Ingreso",  str(row_data[7])),
-        ]
+        # Cargar datos
+        data = repo.get_detail(student_id)
 
-        form = QFormLayout()
-        form.setSpacing(10)
-        for key, val in labels:
+        def section(text):
+            lbl = QLabel(text)
+            lbl.setStyleSheet(f"""
+                font-size: 10px; font-weight: 700;
+                letter-spacing: 1px; color: {TEXT_SEC};
+                padding-top: 8px;
+            """)
+            return lbl
+
+        def row(key, val, color=None):
             k = QLabel(key + ":")
             k.setStyleSheet(f"color: {TEXT_SEC}; font-size: 12px; font-weight: 600;")
-            v = QLabel(val)
-            v.setStyleSheet(f"color: {TEXT_PRI}; font-size: 13px;")
+            v = QLabel(str(val))
+            v.setStyleSheet(f"color: {color or TEXT_PRI}; font-size: 13px;")
             v.setWordWrap(True)
-            form.addRow(k, v)
-        layout.addLayout(form)
+            return k, v
 
+        form = QFormLayout()
+        form.setSpacing(8)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        # ── Datos personales
+        form.addRow(section("DATOS PERSONALES"), QLabel(""))
+        k, v = row("ID", data.get("id", "—")); form.addRow(k, v)
+        k, v = row("Nombre", data.get("nombre", "—")); form.addRow(k, v)
+        k, v = row("Tipo Doc.", data.get("tipo_doc", "—")); form.addRow(k, v)
+        k, v = row("Documento", data.get("documento", "—")); form.addRow(k, v)
+        k, v = row("Teléfono", data.get("telefono", "—")); form.addRow(k, v)
+        k, v = row("Email", data.get("email", "—")); form.addRow(k, v)
+        k, v = row("Nacimiento", data.get("nacimiento", "—")); form.addRow(k, v)
+
+        estado = data.get("estado", "—")
+        color_estado = GREEN if "activo" in estado.lower() else "#FF4444"
+        k, v = row("Estado", estado, color_estado); form.addRow(k, v)
+        k, v = row("Ingreso", data.get("fecha_ingreso", "—")); form.addRow(k, v)
+
+        # ── Membresía
+        form.addRow(section("MEMBRESÍA"), QLabel(""))
+        k, v = row("Plan", data.get("membresia", "—")); form.addRow(k, v)
+        k, v = row("Cuota", f"${data.get('cuota', '—')}" if data.get('cuota') not in ('—', None) else "—"); form.addRow(k, v)
+        k, v = row("Inicio", data.get("inicio_mem", "—")); form.addRow(k, v)
+        k, v = row("Vence", data.get("fin_mem", "—")); form.addRow(k, v)
+
+        # ── Cinturón
+        form.addRow(section("CINTURÓN"), QLabel(""))
+        k, v = row("Arte Marcial", data.get("arte_marcial", "—")); form.addRow(k, v)
+        k, v = row("Cinturón", data.get("cinturon", "—")); form.addRow(k, v)
+
+        layout.addLayout(form)
         layout.addStretch()
 
         btn_close = QPushButton("Cerrar")
@@ -157,6 +187,21 @@ class StudentsView(QWidget):
         title = QLabel("👥  Estudiantes")
         title.setStyleSheet(f"font-size: 22px; font-weight: 700; color: {TEXT_PRI};")
 
+        self.btn_delete = QPushButton("🗑  Eliminar")
+        self.btn_delete.setFixedHeight(38)
+        self.btn_delete.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_delete.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent; color: #FF4444;
+                border: 1px solid #FF4444; border-radius: 7px;
+                font-size: 13px; font-weight: 600;
+                padding: 0 18px;
+            }}
+            QPushButton:hover {{ background-color: #2A0A0A; }}
+            QPushButton:pressed {{ background-color: #3A0000; }}
+        """)
+        self.btn_delete.clicked.connect(self._delete_student)
+
         self.btn_new = QPushButton("＋  Nuevo Estudiante")
         self.btn_new.setFixedHeight(38)
         self.btn_new.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -174,6 +219,7 @@ class StudentsView(QWidget):
 
         h.addWidget(title)
         h.addStretch()
+        h.addWidget(self.btn_delete)
         h.addWidget(self.btn_new)
         return w
 
@@ -216,8 +262,22 @@ class StudentsView(QWidget):
         """)
         btn_refresh.clicked.connect(self._load)
 
+        btn_edit = QPushButton("✎  Editar")
+        btn_edit.setFixedHeight(38)
+        btn_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_edit.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {TEXT_SEC};
+                border: 1px solid {BORDER}; border-radius: 7px;
+                font-size: 12px; padding: 0 14px;
+            }}
+            QPushButton:hover {{ color: {TEXT_PRI}; border-color: #555; }}
+        """)
+        btn_edit.clicked.connect(self._edit_student)
+
         h.addWidget(self.search_input, 1)
         h.addWidget(btn_refresh)
+        h.addWidget(btn_edit)
         return w
 
     def _make_table(self):
@@ -332,7 +392,8 @@ class StudentsView(QWidget):
         row = self.table.currentRow()
         if row < 0 or row >= len(self._rows):
             return
-        dlg = StudentDetail(self._rows[row], self)
+        student_id = self._rows[row][0]
+        dlg = StudentDetail(student_id, self.repo, self)
         dlg.exec()
 
     def _create_student(self):
@@ -348,6 +409,36 @@ class StudentsView(QWidget):
         dlg = StudentForm(self.repo, student_id=sid, parent=self)
         if dlg.exec() == StudentForm.DialogCode.Accepted:
             self._load()
+
+    def _delete_student(self):
+        sid = self._get_selected_id()
+        if sid is None:
+            QMessageBox.information(self, "Aviso", "Selecciona un estudiante primero.")
+            return
+
+        # Nombre del estudiante seleccionado
+        row = self.table.currentRow()
+        nombre = self._rows[row][1] if row >= 0 else "este estudiante"
+
+        confirm = QMessageBox(self)
+        confirm.setWindowTitle("Confirmar eliminación")
+        confirm.setText(f"¿Eliminar a {nombre}?")
+        confirm.setInformativeText(
+            "Se eliminarán sus membresías, cinturones e historial.\n"
+            "Esta acción no se puede deshacer."
+        )
+        confirm.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+        )
+        confirm.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        confirm.setStyleSheet("background-color: #161616; color: #F0F0F0;")
+
+        if confirm.exec() == QMessageBox.StandardButton.Yes:
+            try:
+                self.repo.delete(sid)
+                self._load()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"No se pudo eliminar:\n{e}")
 
     # Botón editar accesible desde la barra de herramientas también
     def keyPressEvent(self, event):

@@ -13,6 +13,7 @@ from services.auth_service import AuthService
 from views.login_view import LoginView
 from views.dashboard_view import DashboardView
 from database.connection import db
+from views.students_view import StudentsView
 
 # ─── PALETA ───────────────────────────────────────────────────────────
 BG_SIDEBAR  = "#111111"
@@ -190,6 +191,8 @@ class MainWindow(QMainWindow):
         # Mostrar vista correspondiente
         if clicked_btn == self.btn_dashboard:
             self._show_dashboard()
+        elif clicked_btn == self.btn_students:
+            self._show_students()
         else:
             self._show_placeholder(clicked_btn.text().strip())
 
@@ -202,6 +205,11 @@ class MainWindow(QMainWindow):
     def _show_dashboard(self):
         self._clear_content()
         view = DashboardView(db, self.user)
+        self.content_layout.addWidget(view)
+
+    def _show_students(self):
+        self._clear_content()
+        view = StudentsView()
         self.content_layout.addWidget(view)
 
     def _show_placeholder(self, name):
