@@ -16,6 +16,7 @@ class StudentRepository:
                     p.email,
                     COALESCE(st.status, 'Sin estado')     AS estado,
                     COALESCE(ma.name,  'Sin arte')        AS arte_marcial,
+                    COALESCE(cat.name, 'Sin categoría')   AS categoria,
                     p.created_at::date                    AS fecha_ingreso,
                     s.id_person,
                     p.first_name,
@@ -29,6 +30,7 @@ class StudentRepository:
                 JOIN people p         ON p.id  = s.id_person
                 LEFT JOIN type_document td ON td.id = s.id_type_document
                 LEFT JOIN status st        ON st.id = s.id_status
+                LEFT JOIN categories cat   ON cat.id = s.category_id
                 LEFT JOIN student_memberships sm
                        ON sm.id_student = s.id
                       AND sm.status = 'activo'
@@ -186,6 +188,16 @@ class StudentRepository:
             cur.close()
             db.release(conn)
 
+    def get_categories(self) -> list:
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, name FROM categories ORDER BY name")
+            return cur.fetchall()
+        finally:
+            cur.close()
+            db.release(conn)
+
     def delete(self, student_id: int):
         """Elimina estudiante y su persona asociada."""
         conn = db.get_conn()
@@ -213,7 +225,6 @@ class StudentRepository:
             db.release(conn)
 
     def get_detail(self, student_id: int) -> dict:
-        """Retorna detalle completo: membresía activa + cinturón actual."""
         conn = db.get_conn()
         try:
             cur = conn.cursor()
@@ -228,7 +239,6 @@ class StudentRepository:
                     COALESCE(p.birthdate::text, '—')        AS nacimiento,
                     COALESCE(st.status, '—')                AS estado,
                     p.created_at::date                      AS fecha_ingreso,
-                    -- Membresía activa
                     COALESCE(mp.name, 'Sin membresía')      AS membresia,
                     COALESCE(sm.status, '—')                AS estado_mem,
                     COALESCE(sm.start_date::text, '—')      AS inicio_mem,
@@ -238,18 +248,19 @@ class StudentRepository:
                         mp.monthly_fee::text,
                         '—'
                     )                                       AS cuota,
-                    -- Cinturón actual (último asignado)
                     COALESCE(b.name, 'Sin cinturón')        AS cinturon,
-                    COALESCE(ma.name, '—')                  AS arte_marcial
+                    COALESCE(ma.name, '—')                  AS arte_marcial,
+                    COALESCE(cat.name, 'Sin categoría')     AS categoria
                 FROM students s
-                JOIN people p ON p.id = s.id_person
+                JOIN people p              ON p.id  = s.id_person
                 LEFT JOIN type_document td ON td.id = s.id_type_document
                 LEFT JOIN status st        ON st.id = s.id_status
+                LEFT JOIN categories cat   ON cat.id = s.category_id
                 LEFT JOIN student_memberships sm
                        ON sm.id_student = s.id AND sm.status = 'activo'
                 LEFT JOIN membership_plans mp ON mp.id = sm.id_membership_plan
-                LEFT JOIN belts_students bs   ON bs.students_id = s.id
-                LEFT JOIN belts b             ON b.id = bs.belts_id
+                LEFT JOIN students_belts bs ON bs.id_student = s.id
+                LEFT JOIN belts b           ON b.id = bs.id_belt
                 LEFT JOIN martial_arts ma     ON ma.id = b.id_martial_art
                 WHERE s.id = %s
                 LIMIT 1
@@ -261,7 +272,7 @@ class StudentRepository:
                 "id", "nombre", "tipo_doc", "documento", "telefono",
                 "email", "nacimiento", "estado", "fecha_ingreso",
                 "membresia", "estado_mem", "inicio_mem", "fin_mem",
-                "cuota", "cinturon", "arte_marcial"
+                "cuota", "cinturon", "arte_marcial", "categoria"
             ]
             return dict(zip(keys, row))
         finally:

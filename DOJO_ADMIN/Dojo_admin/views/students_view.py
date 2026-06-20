@@ -107,6 +107,7 @@ class StudentDetail(QDialog):
         color_estado = GREEN if "activo" in estado.lower() else "#FF4444"
         k, v = row("Estado", estado, color_estado); form.addRow(k, v)
         k, v = row("Ingreso", data.get("fecha_ingreso", "—")); form.addRow(k, v)
+        k, v = row("Categoría", data.get("categoria", "—")); form.addRow(k, v)
 
         # ── Membresía
         form.addRow(section("MEMBRESÍA"), QLabel(""))
@@ -282,10 +283,10 @@ class StudentsView(QWidget):
 
     def _make_table(self):
         table = QTableWidget()
-        table.setColumnCount(7)
+        table.setColumnCount(8)
         table.setHorizontalHeaderLabels([
             "ID", "Nombre", "Documento", "Teléfono",
-            "Email", "Estado", "Arte Marcial"
+            "Email", "Estado", "Arte Marcial", "Categoría"
         ])
 
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -353,9 +354,9 @@ class StudentsView(QWidget):
 
         self.table.setRowCount(len(rows))
         for i, row in enumerate(rows):
-            # Columnas: id, nombre, documento, teléfono, email, estado, arte
+            # Columnas: id, nombre, documento, teléfono, email, estado, arte, categoria
             values = [row[0], row[1], row[2], row[3] or "—",
-                      row[4] or "—", row[5], row[6]]
+                      row[4] or "—", row[5], row[6], row[7]]
             for j, val in enumerate(values):
                 item = QTableWidgetItem(str(val))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)

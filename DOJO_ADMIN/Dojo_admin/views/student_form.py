@@ -102,10 +102,11 @@ class StudentForm(QDialog):
         self.inp_doc    = QLineEdit()
         self.cmb_doctype = QComboBox()
         self.cmb_status  = QComboBox()
+        self.cmb_category = QComboBox()
 
         for w in [self.inp_first, self.inp_last, self.inp_phone,
                   self.inp_email, self.inp_birth, self.inp_doc,
-                  self.cmb_doctype, self.cmb_status]:
+                  self.cmb_doctype, self.cmb_status, self.cmb_category]:
             w.setStyleSheet(INPUT_STYLE)
 
         form.addRow(lbl("Nombre *"),      self.inp_first)
@@ -116,6 +117,7 @@ class StudentForm(QDialog):
         form.addRow(lbl("Tipo Doc."),      self.cmb_doctype)
         form.addRow(lbl("Nº Documento"),   self.inp_doc)
         form.addRow(lbl("Estado"),         self.cmb_status)
+        form.addRow(lbl("Categoría"),      self.cmb_category)
 
         root.addLayout(form)
 
@@ -171,6 +173,11 @@ class StudentForm(QDialog):
         for st_id, st_name in self.repo.get_statuses():
             self.cmb_status.addItem(st_name, st_id)
 
+        # Categoría
+        self.cmb_category.addItem("Seleccionar...", None)
+        for cat_id, cat_name in self.repo.get_categories():
+            self.cmb_category.addItem(cat_name, cat_id)
+
     # ── Cargar datos del estudiante (modo edición) ────────────────────
     def _load_student(self):
         data = self.repo.get_by_id(self.student_id)
@@ -197,6 +204,12 @@ class StudentForm(QDialog):
                 self.cmb_status.setCurrentIndex(i)
                 break
 
+        # Seleccionar combo categoría
+        for i in range(self.cmb_category.count()):
+            if self.cmb_category.itemData(i) == data["category_id"]:
+                self.cmb_category.setCurrentIndex(i)
+                break
+
     # ── Guardar ───────────────────────────────────────────────────────
     def _save(self):
         self.lbl_error.setText("")
@@ -218,7 +231,7 @@ class StudentForm(QDialog):
             "document":         self.inp_doc.text().strip() or None,
             "id_type_document": self.cmb_doctype.currentData(),
             "id_status":        self.cmb_status.currentData(),
-            "category_id":      None,
+            "category_id":      self.cmb_category.currentData(),
         }
 
         self.btn_save.setEnabled(False)
