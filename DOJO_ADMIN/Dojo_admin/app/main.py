@@ -123,10 +123,10 @@ class MainWindow(QMainWindow):
         # Botones de navegación
         self.btn_dashboard   = SidebarButton("📊", "Dashboard")
         self.btn_students    = SidebarButton("👥", "Estudiantes")
-        self.btn_classes     = SidebarButton("🥋", "Clases")
+        self.btn_classes     = SidebarButton("🗓️​", "Clases")
         self.btn_payments    = SidebarButton("💰", "Pagos")
         self.btn_expenses    = SidebarButton("📉", "Egresos")
-        self.btn_belts       = SidebarButton("🏅", "Cinturones")
+        self.btn_belts       = SidebarButton("🥋", "Artes Marciales")
         self.btn_inventory   = SidebarButton("📦", "Inventario")
         self.btn_reports     = SidebarButton("📈", "Reportes")
         self.btn_settings    = SidebarButton("⚙️",  "Configuración")
@@ -193,6 +193,8 @@ class MainWindow(QMainWindow):
             self._show_dashboard()
         elif clicked_btn == self.btn_students:
             self._show_students()
+        elif clicked_btn == self.btn_belts:
+            self._show_belts()
         else:
             self._show_placeholder(clicked_btn.text().strip())
 
@@ -218,6 +220,12 @@ class MainWindow(QMainWindow):
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl.setStyleSheet(f"color: {TEXT_MUT}; font-size: 18px;")
         self.content_layout.addWidget(lbl)
+    
+    def _show_belts(self):
+        self._clear_content()
+        from views.belts_view import BeltsView
+        view = BeltsView()
+        self.content_layout.addWidget(view)
 
     def _logout(self):
         from views.login_view import LoginView
