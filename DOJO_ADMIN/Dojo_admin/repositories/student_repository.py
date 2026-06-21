@@ -66,7 +66,8 @@ class StudentRepository:
                     s.id, p.first_name, p.last_name,
                     p.phone, p.email, p.birthdate,
                     s.document, s.id_type_document,
-                    s.id_status, s.category_id, s.id_person
+                    s.id_status, s.category_id, s.id_person,
+                    s.joined_date
                 FROM students s
                 JOIN people p ON p.id = s.id_person
                 WHERE s.id = %s
@@ -79,7 +80,7 @@ class StudentRepository:
                 "phone": row[3], "email": row[4], "birthdate": row[5],
                 "document": row[6], "id_type_document": row[7],
                 "id_status": row[8], "category_id": row[9],
-                "id_person": row[10],
+                "id_person": row[10], "joined_date": row[11],
             }
         finally:
             cur.close()
@@ -104,8 +105,8 @@ class StudentRepository:
 
             # 2. Insertar en students
             cur.execute("""
-                INSERT INTO students (id_person, id_type_document, document, id_status, category_id)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO students (id_person, id_type_document, document, id_status, category_id, joined_date)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 person_id,
@@ -113,6 +114,7 @@ class StudentRepository:
                 data.get("document"),
                 data.get("id_status"),
                 data.get("category_id"),
+                data.get("joined_date"),
             ))
             student_id = cur.fetchone()[0]
             conn.commit()
@@ -151,13 +153,15 @@ class StudentRepository:
             cur.execute("""
                 UPDATE students
                 SET id_type_document = %s, document = %s,
-                    id_status = %s, category_id = %s
+                    id_status = %s, category_id = %s,
+                    joined_date = %s
                 WHERE id = %s
             """, (
                 data.get("id_type_document"),
                 data.get("document"),
                 data.get("id_status"),
                 data.get("category_id"),
+                data.get("joined_date"),
                 student_id,
             ))
             conn.commit()
@@ -275,6 +279,78 @@ class StudentRepository:
                 "cuota", "cinturon", "arte_marcial", "categoria"
             ]
             return dict(zip(keys, row))
+        finally:
+            cur.close()
+            db.release(conn)
+
+    def get_belt_history(self, student_id: int) -> list:
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT
+                    b.name      AS cinturon,
+                    ma.name     AS arte_marcial,
+                    sbh.action,
+                    sbh.date_changed
+                FROM students_belts_history sbh
+                JOIN belts b         ON b.id  = sbh.id_belt
+                JOIN martial_arts ma ON ma.id = b.id_martial_art
+                WHERE sbh.id_student = %s
+                ORDER BY sbh.date_changed DESC
+            """, (student_id,))
+            return cur.fetchall()
+        finally:
+            cur.close()
+            db.release(conn)
+
+    def get_last_classes(self, student_id: int) -> list:
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT
+                    c.date,
+                    COALESCE(sc.name, 'Sin nombre') AS clase,
+                    COALESCE(ma.name, '—')           AS arte_marcial
+                FROM attendance a
+                JOIN classes c       ON c.id  = a.id_class
+                LEFT JOIN schedule sc     ON sc.id = c.id_schedule
+                LEFT JOIN martial_arts ma ON ma.id = sc.id_martial_art
+                WHERE a.id_student = %s
+                ORDER BY c.date DESC
+                LIMIT 5
+            """, (student_id,))
+            return cur.fetchall()
+        finally:
+            cur.close()
+            db.release(conn)
+
+    def update_photo(self, student_id: int, photo_path: str):
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE people SET photo_path = %s
+                WHERE id = (SELECT id_person FROM students WHERE id = %s)
+            """, (photo_path, student_id))
+            conn.commit()
+        finally:
+            cur.close()
+            db.release(conn)
+
+    def get_photo(self, student_id: int) -> str | None:
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT p.photo_path
+                FROM students s
+                JOIN people p ON p.id = s.id_person
+                WHERE s.id = %s
+            """, (student_id,))
+            row = cur.fetchone()
+            return row[0] if row else None
         finally:
             cur.close()
             db.release(conn)

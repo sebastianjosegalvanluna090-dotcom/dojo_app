@@ -48,7 +48,7 @@ class LoginView(QWidget):
     # ── Tarjeta central ──────────────────────────────────────────────
     def _make_card(self):
         card = QFrame()
-        card.setFixedSize(360, 500)
+        card.setFixedSize(360, 540)
         card.setStyleSheet(f"""
             QFrame {{
                 background-color: {CARD_BG};
@@ -104,6 +104,22 @@ class LoginView(QWidget):
 
         # Footer
         layout.addWidget(self._make_footer())
+
+        # ── Botón registrarse
+        btn_register = QPushButton("¿Tienes un código? Regístrate")
+        btn_register.setFixedHeight(36)
+        btn_register.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_register.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {TEXT_MUTED};
+                border: none;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{ color: {BTN_RED}; }}
+        """)
+        btn_register.clicked.connect(self._open_register)
+        layout.addWidget(btn_register)
 
         return card
 
@@ -237,6 +253,15 @@ class LoginView(QWidget):
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl.setStyleSheet(f"font-size: 10px; color: {TEXT_MUTED}; background: transparent; border: none;")
         return lbl
+
+    # ── Abrir registro ────────────────────────────────────────────────
+    def _open_register(self):
+        from views.register_view import RegisterView
+        self.register = RegisterView(
+            on_back=lambda: self.show()
+        )
+        self.register.show()
+        self.hide()
 
     # ── Lógica de login ───────────────────────────────────────────────
     def _do_login(self):
