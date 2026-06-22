@@ -63,300 +63,35 @@ def _lbl(text):
     return l
 
 
+def _belt_border(color: str) -> str:
+    """Returns a visible border color for light-colored belts."""
+    light = {"#FFFFFF", "#FFD700", "#FF8C00", "#FFFF00", "#FFA500", "#FFFACD"}
+    return "#999999" if color.upper() in light else color
+
+
+# ─── MartialArtDialog ─────────────────────────────────────────────────
 class MartialArtDialog(QDialog):
     def __init__(self, repo, martial_art=None, parent=None):
-        def __init__(self, repo, martial_art_id, belt=None, parent=None):
-            super().__init__(parent)
-            self.repo = repo
-            self.martial_art_id = martial_art_id
-            self.belt = belt
-            self.is_edit = belt is not None
-            self.setWindowTitle("Editar Cinturón" if self.is_edit else "Nuevo Cinturón")
-            self.setFixedSize(580, 220)
-            self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
-            self.setStyleSheet(f"background-color: #111111; color: {TEXT_PRI};")
+        super().__init__(parent)
+        self.repo = repo
+        self.martial_art = martial_art
+        self.is_edit = martial_art is not None
+        self.setWindowTitle("Editar Arte Marcial" if self.is_edit else "Nueva Arte Marcial")
+        self.setFixedSize(380, 160)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
+        self.setStyleSheet(f"background-color: #111111; color: {TEXT_PRI};")
 
-            root = QVBoxLayout(self)
-            root.setContentsMargins(24, 20, 24, 20)
-            root.setSpacing(14)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 24, 20)
+        root.setSpacing(14)
 
-            # ── Grid de campos
-            from PyQt6.QtWidgets import QGridLayout
-            grid = QGridLayout()
-            grid.setHorizontalSpacing(12)
-            grid.setVerticalSpacing(8)
-            grid.setColumnStretch(0, 2)
-            grid.setColumnStretch(1, 1)
-            grid.setColumnStretch(2, 1)
-            grid.setColumnStretch(3, 1)
-
-            grid.addWidget(_lbl("NOMBRE"), 0, 0)
-            grid.addWidget(_lbl("ORDEN"), 0, 1)
-            grid.addWidget(_lbl("COLOR"), 0, 2)
-            grid.addWidget(_lbl("PRE-COLOR (opc.)"), 0, 3)
-
-            # Nombre
-            self.inp_name = QLineEdit()
-            self.inp_name.setPlaceholderText("Ej: Blanco, Amarillo...")
-            self.inp_name.setStyleSheet(FIELD_STYLE)
-            if self.is_edit:
-                self.inp_name.setText(belt["name"])
-            grid.addWidget(self.inp_name, 1, 0)
-
-            # Orden
-            self.inp_orden = QLineEdit()
-            self.inp_orden.setPlaceholderText("1, 2, 3...")
-            self.inp_orden.setStyleSheet(FIELD_STYLE)
-            if self.is_edit:
-                self.inp_orden.setText(str(belt.get("orden") or ""))
-            grid.addWidget(self.inp_orden, 1, 1)
-
-            # Color
-            color_w = QWidget()
-            color_w.setStyleSheet("background: transparent;")
-            color_hl = QHBoxLayout(color_w)
-            color_hl.setContentsMargins(0, 0, 0, 0)
-            color_hl.setSpacing(4)
-
-            self.inp_color = QLineEdit()
-            self.inp_color.setPlaceholderText("#FFFFFF")
-            self.inp_color.setStyleSheet(FIELD_STYLE)
-            self.inp_color.setFixedWidth(82)
-            if self.is_edit:
-                self.inp_color.setText(belt.get("color", "") or "")
-
-            self.color_preview = QFrame()
-            self.color_preview.setFixedSize(32, 36)
-            self._update_color_preview(
-                belt.get("color", "#888888") if self.is_edit else "#888888"
-            )
-
-            btn_pick = QPushButton("🎨")
-            btn_pick.setFixedSize(34, 36)
-            btn_pick.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_pick.setStyleSheet(f"""
-                QPushButton {{ background:#1C1C1C; border:1.5px solid {BORDER};
-                    border-radius:6px; font-size:14px; }}
-                QPushButton:hover {{ border-color:{RED}; }}
-            """)
-            btn_pick.clicked.connect(self._pick_color)
-            self.inp_color.textChanged.connect(
-                lambda t: self._update_color_preview(t)
-                if len(t) == 7 and t.startswith("#") else None
-            )
-            color_hl.addWidget(self.inp_color)
-            color_hl.addWidget(self.color_preview)
-            color_hl.addWidget(btn_pick)
-            grid.addWidget(color_w, 1, 2)
-
-            # Pre-color
-            pre_w = QWidget()
-            pre_w.setStyleSheet("background: transparent;")
-            pre_hl = QHBoxLayout(pre_w)
-            pre_hl.setContentsMargins(0, 0, 0, 0)
-            pre_hl.setSpacing(4)
-
-            self.inp_pre_color = QLineEdit()
-            self.inp_pre_color.setPlaceholderText("Sin pre")
-            self.inp_pre_color.setStyleSheet(FIELD_STYLE)
-            self.inp_pre_color.setFixedWidth(82)
-            if self.is_edit:
-                self.inp_pre_color.setText(belt.get("pre_color", "") or "")
-
-            self.pre_color_preview = QFrame()
-            self.pre_color_preview.setFixedSize(32, 36)
-            self._update_pre_color_preview(
-                belt.get("pre_color", "#2A2A2A") if self.is_edit else "#2A2A2A"
-            )
-
-            btn_pick_pre = QPushButton("🎨")
-            btn_pick_pre.setFixedSize(34, 36)
-            btn_pick_pre.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_pick_pre.setStyleSheet(f"""
-                QPushButton {{ background:#1C1C1C; border:1.5px solid {BORDER};
-                    border-radius:6px; font-size:14px; }}
-                QPushButton:hover {{ border-color:{RED}; }}
-            """)
-            btn_pick_pre.clicked.connect(self._pick_pre_color)
-            self.inp_pre_color.textChanged.connect(
-                lambda t: self._update_pre_color_preview(t)
-                if len(t) == 7 and t.startswith("#") else None
-            )
-            pre_hl.addWidget(self.inp_pre_color)
-            pre_hl.addWidget(self.pre_color_preview)
-            pre_hl.addWidget(btn_pick_pre)
-            grid.addWidget(pre_w, 1, 3)
-
-            root.addLayout(grid)
-
-            # ── Error + botones
-            self.lbl_error = QLabel("")
-            self.lbl_error.setStyleSheet("color: #FF4444; font-size: 11px;")
-            root.addWidget(self.lbl_error)
-
-            btn_row = QHBoxLayout()
-            btn_cancel = QPushButton("Cancelar")
-            btn_cancel.setFixedHeight(38)
-            btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_cancel.setStyleSheet(f"""
-                QPushButton {{ background: transparent; color: {TEXT_SEC};
-                    border: 1px solid {BORDER}; border-radius: 8px; font-size: 13px; }}
-                QPushButton:hover {{ color: {TEXT_PRI}; }}
-            """)
-            btn_cancel.clicked.connect(self.reject)
-
-            btn_save = QPushButton("Guardar" if self.is_edit else "Crear")
-            btn_save.setFixedHeight(38)
-            btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_save.setStyleSheet(f"""
-                QPushButton {{ background: {RED}; color: white;
-                    border: none; border-radius: 8px; font-size: 13px; font-weight: 700; }}
-                QPushButton:hover {{ background: {RED_H}; }}
-            """)
-            btn_save.clicked.connect(self._save)
-            self.inp_name.returnPressed.connect(self._save)
-
-            btn_row.addWidget(btn_cancel)
-            btn_row.addWidget(btn_save)
-            root.addLayout(btn_row)
-        color_hl.addWidget(self.inp_color)
-        color_hl.addWidget(self.color_preview)
-        color_hl.addWidget(btn_pick)
-        grid.addWidget(color_w, 1, 2)
-
-        pre_w = QWidget(); pre_w.setStyleSheet("background:transparent;")
-        pre_hl = QHBoxLayout(pre_w)
-        pre_hl.setContentsMargins(0,0,0,0); pre_hl.setSpacing(4)
-        self.inp_pre_color = QLineEdit()
-        self.inp_pre_color.setPlaceholderText("Sin pre")
-        self.inp_pre_color.setStyleSheet(FIELD_STYLE)
-        self.inp_pre_color.setFixedWidth(80)
-        if self.is_edit:
-            self.inp_pre_color.setText(belt.get("pre_color", "") or "")
-        self.pre_color_preview = QFrame()
-        self.pre_color_preview.setFixedSize(32, 36)
-        self._update_pre_color_preview(belt.get("pre_color", "#2A2A2A") if self.is_edit else "#2A2A2A")
-        btn_pick_pre = QPushButton("🎨")
-        btn_pick_pre.setFixedSize(34, 36)
-        btn_pick_pre.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_pick_pre.setStyleSheet(f"""
-            QPushButton {{ background:#1C1C1C; border:1.5px solid {BORDER};
-                border-radius:6px; font-size:14px; }}
-            QPushButton:hover {{ border-color:{RED}; }}
-        """)
-        btn_pick_pre.clicked.connect(self._pick_pre_color)
-        self.inp_pre_color.textChanged.connect(
-            lambda t: self._update_pre_color_preview(t) if len(t)==7 and t.startswith("#") else None
-        )
-        pre_hl.addWidget(self.inp_pre_color)
-        pre_hl.addWidget(self.pre_color_preview)
-        pre_hl.addWidget(btn_pick_pre)
-        grid.addWidget(pre_w, 1, 3)
-
-        root.addLayout(grid)
-        name_col = QVBoxLayout()
-        name_col.addWidget(_lbl("NOMBRE"))
+        root.addWidget(_lbl("NOMBRE DEL ARTE MARCIAL"))
         self.inp_name = QLineEdit()
-        self.inp_name.setPlaceholderText("Ej: Blanco, Amarillo...")
+        self.inp_name.setPlaceholderText("Ej: Karate, Judo, BJJ...")
         self.inp_name.setStyleSheet(FIELD_STYLE)
         if self.is_edit:
-            self.inp_name.setText(belt["name"])
-        name_col.addWidget(self.inp_name)
-
-        orden_col = QVBoxLayout()
-        orden_col.addWidget(_lbl("ORDEN"))
-        self.inp_orden = QLineEdit()
-        self.inp_orden.setPlaceholderText("1, 2, 3...")
-        self.inp_orden.setStyleSheet(FIELD_STYLE)
-        self.inp_orden.setFixedWidth(80)
-        if self.is_edit:
-            self.inp_orden.setText(str(belt["orden"] or ""))
-        orden_col.addWidget(self.inp_orden)
-
-        color_col = QVBoxLayout()
-        color_col.addWidget(_lbl("COLOR"))
-
-        color_row = QHBoxLayout()
-        color_row.setSpacing(6)
-
-        self.inp_color = QLineEdit()
-        self.inp_color.setPlaceholderText("#FFFFFF")
-        self.inp_color.setStyleSheet(FIELD_STYLE)
-        self.inp_color.setFixedWidth(90)
-        if self.is_edit:
-            self.inp_color.setText(belt.get("color", ""))
-
-        self.color_preview = QFrame()
-        self.color_preview.setFixedSize(32, 32)
-        self._update_color_preview(
-            belt.get("color", "#888888") if self.is_edit else "#888888"
-        )
-
-        btn_pick = QPushButton("🎨")
-        btn_pick.setFixedSize(36, 36)
-        btn_pick.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_pick.setStyleSheet(f"""
-            QPushButton {{
-                background: #1C1C1C; border: 1.5px solid {BORDER};
-                border-radius: 8px; font-size: 16px;
-            }}
-            QPushButton:hover {{ border-color: {RED}; }}
-        """)
-        btn_pick.clicked.connect(self._pick_color)
-
-        self.inp_color.textChanged.connect(
-            lambda t: self._update_color_preview(t) if len(t) == 7 and t.startswith("#") else None
-        )
-
-        color_row.addWidget(self.inp_color)
-        color_row.addWidget(self.color_preview)
-        color_row.addWidget(btn_pick)
-        color_col.addLayout(color_row)
-
-        pre_col = QVBoxLayout()
-        pre_col.addWidget(_lbl("PRE-COLOR (opcional)"))
-
-        pre_row = QHBoxLayout()
-        pre_row.setSpacing(6)
-
-        self.inp_pre_color = QLineEdit()
-        self.inp_pre_color.setPlaceholderText("Sin pre-grado")
-        self.inp_pre_color.setStyleSheet(FIELD_STYLE)
-        self.inp_pre_color.setFixedWidth(90)
-        if self.is_edit:
-            self.inp_pre_color.setText(belt.get("pre_color", "") or "")
-
-        self.pre_color_preview = QFrame()
-        self.pre_color_preview.setFixedSize(32, 32)
-        pre_c = belt.get("pre_color") if self.is_edit else None
-        self._update_pre_color_preview(pre_c or "#2A2A2A")
-
-        btn_pick_pre = QPushButton("🎨")
-        btn_pick_pre.setFixedSize(36, 36)
-        btn_pick_pre.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_pick_pre.setStyleSheet(f"""
-            QPushButton {{
-                background: #1C1C1C; border: 1.5px solid {BORDER};
-                border-radius: 8px; font-size: 16px;
-            }}
-            QPushButton:hover {{ border-color: {RED}; }}
-        """)
-        btn_pick_pre.clicked.connect(self._pick_pre_color)
-
-        self.inp_pre_color.textChanged.connect(
-            lambda t: self._update_pre_color_preview(t) if len(t) == 7 and t.startswith("#") else None
-        )
-
-        pre_row.addWidget(self.inp_pre_color)
-        pre_row.addWidget(self.pre_color_preview)
-        pre_row.addWidget(btn_pick_pre)
-        pre_col.addLayout(pre_row)
-
-        row.addLayout(name_col, 1)
-        row.addLayout(orden_col)
-        row.addLayout(color_col)
-        row.addLayout(pre_col)
-        root.addLayout(row)
+            self.inp_name.setText(martial_art["name"])
+        root.addWidget(self.inp_name)
 
         self.lbl_error = QLabel("")
         self.lbl_error.setStyleSheet("color: #FF4444; font-size: 11px;")
@@ -382,6 +117,173 @@ class MartialArtDialog(QDialog):
             QPushButton:hover {{ background: {RED_H}; }}
         """)
         btn_save.clicked.connect(self._save)
+        self.inp_name.returnPressed.connect(self._save)
+
+        btn_row.addWidget(btn_cancel)
+        btn_row.addWidget(btn_save)
+        root.addLayout(btn_row)
+
+    def _save(self):
+        name = self.inp_name.text().strip()
+        if not name:
+            self.lbl_error.setText("⚠ El nombre es obligatorio.")
+            return
+        try:
+            if self.is_edit:
+                self.repo.update_martial_art(self.martial_art["id"], name)
+            else:
+                self.repo.create_martial_art(name)
+            self.accept()
+        except Exception as e:
+            self.lbl_error.setText(f"Error: {e}")
+
+
+# ─── BeltDialog ───────────────────────────────────────────────────────
+class BeltDialog(QDialog):
+    def __init__(self, repo, martial_art_id, belt=None, parent=None):
+        super().__init__(parent)
+        self.repo = repo
+        self.martial_art_id = martial_art_id
+        self.belt = belt
+        self.is_edit = belt is not None
+        self.setWindowTitle("Editar Cinturón" if self.is_edit else "Nuevo Cinturón")
+        self.setFixedSize(580, 200)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
+        self.setStyleSheet(f"background-color: #111111; color: {TEXT_PRI};")
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 24, 20)
+        root.setSpacing(14)
+
+        # ── Grid de campos
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(8)
+        grid.setColumnStretch(0, 2)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(2, 1)
+        grid.setColumnStretch(3, 1)
+
+        grid.addWidget(_lbl("NOMBRE"), 0, 0)
+        grid.addWidget(_lbl("ORDEN"), 0, 1)
+        grid.addWidget(_lbl("COLOR"), 0, 2)
+        grid.addWidget(_lbl("PRE-COLOR (opc.)"), 0, 3)
+
+        # Nombre
+        self.inp_name = QLineEdit()
+        self.inp_name.setPlaceholderText("Ej: Blanco, Amarillo...")
+        self.inp_name.setStyleSheet(FIELD_STYLE)
+        if self.is_edit:
+            self.inp_name.setText(belt["name"])
+        grid.addWidget(self.inp_name, 1, 0)
+
+        # Orden
+        self.inp_orden = QLineEdit()
+        self.inp_orden.setPlaceholderText("1, 2, 3...")
+        self.inp_orden.setStyleSheet(FIELD_STYLE)
+        if self.is_edit:
+            self.inp_orden.setText(str(belt.get("orden") or ""))
+        grid.addWidget(self.inp_orden, 1, 1)
+
+        # Color
+        color_w = QWidget()
+        color_w.setStyleSheet("background: transparent;")
+        color_hl = QHBoxLayout(color_w)
+        color_hl.setContentsMargins(0, 0, 0, 0)
+        color_hl.setSpacing(4)
+
+        self.inp_color = QLineEdit()
+        self.inp_color.setPlaceholderText("#FFFFFF")
+        self.inp_color.setStyleSheet(FIELD_STYLE)
+        self.inp_color.setFixedWidth(82)
+        if self.is_edit:
+            self.inp_color.setText(belt.get("color", "") or "")
+
+        self.color_preview = QFrame()
+        self.color_preview.setFixedSize(32, 36)
+        self._update_color_preview(belt.get("color", "#888888") if self.is_edit else "#888888")
+
+        btn_pick = QPushButton("🎨")
+        btn_pick.setFixedSize(34, 36)
+        btn_pick.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_pick.setStyleSheet(f"""
+            QPushButton {{ background:#1C1C1C; border:1.5px solid {BORDER};
+                border-radius:6px; font-size:14px; }}
+            QPushButton:hover {{ border-color:{RED}; }}
+        """)
+        btn_pick.clicked.connect(self._pick_color)
+        self.inp_color.textChanged.connect(
+            lambda t: self._update_color_preview(t) if len(t) == 7 and t.startswith("#") else None
+        )
+        color_hl.addWidget(self.inp_color)
+        color_hl.addWidget(self.color_preview)
+        color_hl.addWidget(btn_pick)
+        grid.addWidget(color_w, 1, 2)
+
+        # Pre-color
+        pre_w = QWidget()
+        pre_w.setStyleSheet("background: transparent;")
+        pre_hl = QHBoxLayout(pre_w)
+        pre_hl.setContentsMargins(0, 0, 0, 0)
+        pre_hl.setSpacing(4)
+
+        self.inp_pre_color = QLineEdit()
+        self.inp_pre_color.setPlaceholderText("Sin pre")
+        self.inp_pre_color.setStyleSheet(FIELD_STYLE)
+        self.inp_pre_color.setFixedWidth(82)
+        if self.is_edit:
+            self.inp_pre_color.setText(belt.get("pre_color", "") or "")
+
+        self.pre_color_preview = QFrame()
+        self.pre_color_preview.setFixedSize(32, 36)
+        self._update_pre_color_preview(belt.get("pre_color", "#2A2A2A") if self.is_edit else "#2A2A2A")
+
+        btn_pick_pre = QPushButton("🎨")
+        btn_pick_pre.setFixedSize(34, 36)
+        btn_pick_pre.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_pick_pre.setStyleSheet(f"""
+            QPushButton {{ background:#1C1C1C; border:1.5px solid {BORDER};
+                border-radius:6px; font-size:14px; }}
+            QPushButton:hover {{ border-color:{RED}; }}
+        """)
+        btn_pick_pre.clicked.connect(self._pick_pre_color)
+        self.inp_pre_color.textChanged.connect(
+            lambda t: self._update_pre_color_preview(t) if len(t) == 7 and t.startswith("#") else None
+        )
+        pre_hl.addWidget(self.inp_pre_color)
+        pre_hl.addWidget(self.pre_color_preview)
+        pre_hl.addWidget(btn_pick_pre)
+        grid.addWidget(pre_w, 1, 3)
+
+        root.addLayout(grid)
+
+        # ── Error + botones
+        self.lbl_error = QLabel("")
+        self.lbl_error.setStyleSheet("color: #FF4444; font-size: 11px;")
+        root.addWidget(self.lbl_error)
+
+        btn_row = QHBoxLayout()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setFixedHeight(38)
+        btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_cancel.setStyleSheet(f"""
+            QPushButton {{ background: transparent; color: {TEXT_SEC};
+                border: 1px solid {BORDER}; border-radius: 8px; font-size: 13px; }}
+            QPushButton:hover {{ color: {TEXT_PRI}; }}
+        """)
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_save = QPushButton("Guardar" if self.is_edit else "Crear")
+        btn_save.setFixedHeight(38)
+        btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_save.setStyleSheet(f"""
+            QPushButton {{ background: {RED}; color: white;
+                border: none; border-radius: 8px; font-size: 13px; font-weight: 700; }}
+            QPushButton:hover {{ background: {RED_H}; }}
+        """)
+        btn_save.clicked.connect(self._save)
+        self.inp_name.returnPressed.connect(self._save)
+
         btn_row.addWidget(btn_cancel)
         btn_row.addWidget(btn_save)
         root.addLayout(btn_row)
@@ -409,9 +311,7 @@ class MartialArtDialog(QDialog):
 
     def _update_color_preview(self, color: str):
         try:
-            border = "#999" if color.upper() in (
-                "#FFFFFF", "#FFD700", "#FF8C00", "#FFFF00"
-            ) else color
+            border = _belt_border(color)
             self.color_preview.setStyleSheet(f"""
                 QFrame {{
                     background-color: {color};
@@ -425,14 +325,8 @@ class MartialArtDialog(QDialog):
     def _pick_color(self):
         from PyQt6.QtWidgets import QColorDialog
         from PyQt6.QtGui import QColor
-
         current = self.inp_color.text().strip() or "#FFFFFF"
-        color = QColorDialog.getColor(
-            QColor(current),
-            self,
-            "Seleccionar color del cinturón",
-            QColorDialog.ColorDialogOption.ShowAlphaChannel
-        )
+        color = QColorDialog.getColor(QColor(current), self, "Seleccionar color del cinturón")
         if color.isValid():
             hex_color = color.name().upper()
             self.inp_color.setText(hex_color)
@@ -453,7 +347,6 @@ class MartialArtDialog(QDialog):
     def _pick_pre_color(self):
         from PyQt6.QtWidgets import QColorDialog
         from PyQt6.QtGui import QColor
-
         current = self.inp_pre_color.text().strip() or "#FFFFFF"
         color = QColorDialog.getColor(QColor(current), self, "Color del pre-grado")
         if color.isValid():
@@ -462,6 +355,7 @@ class MartialArtDialog(QDialog):
             self._update_pre_color_preview(hex_color)
 
 
+# ─── RequirementDialog ────────────────────────────────────────────────
 class RequirementDialog(QDialog):
     def __init__(self, repo, belt_id, req=None, parent=None):
         super().__init__(parent)
@@ -488,7 +382,8 @@ class RequirementDialog(QDialog):
         if self.is_edit and req.get("id_type"):
             for i in range(self.cmb_type.count()):
                 if self.cmb_type.itemData(i) == req["id_type"]:
-                    self.cmb_type.setCurrentIndex(i); break
+                    self.cmb_type.setCurrentIndex(i)
+                    break
         root.addWidget(self.cmb_type)
 
         root.addWidget(_lbl("DESCRIPCIÓN DEL REQUISITO"))
@@ -544,6 +439,7 @@ class RequirementDialog(QDialog):
             self.lbl_error.setText(f"Error: {e}")
 
 
+# ─── BeltsView ────────────────────────────────────────────────────────
 class BeltsView(QWidget):
     def __init__(self):
         super().__init__()
@@ -573,10 +469,13 @@ class BeltsView(QWidget):
             QPushButton:hover {{ background: {RED_H}; }}
         """)
         btn_new_ma.clicked.connect(self._create_martial_art)
-        hdr.addWidget(title); hdr.addStretch(); hdr.addWidget(btn_new_ma)
+        hdr.addWidget(title)
+        hdr.addStretch()
+        hdr.addWidget(btn_new_ma)
         root.addLayout(hdr)
 
-        sep = QFrame(); sep.setFixedHeight(2)
+        sep = QFrame()
+        sep.setFixedHeight(2)
         sep.setStyleSheet(f"""
             background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
                 stop:0 {RED}, stop:0.4 {RED}, stop:1 transparent); border: none;
@@ -584,7 +483,8 @@ class BeltsView(QWidget):
         root.addWidget(sep)
 
         # Tres columnas
-        cols = QHBoxLayout(); cols.setSpacing(14)
+        cols = QHBoxLayout()
+        cols.setSpacing(14)
 
         # ── Col 1: Artes Marciales
         ma_card = make_card(RED)
@@ -594,7 +494,8 @@ class BeltsView(QWidget):
         ma_hdr = QHBoxLayout()
         ma_lbl = QLabel("ARTES MARCIALES")
         ma_lbl.setStyleSheet(f"font-size: 11px; font-weight: 700; letter-spacing: 1px; color: {TEXT_MUT};")
-        ma_hdr.addWidget(ma_lbl); ma_hdr.addStretch()
+        ma_hdr.addWidget(ma_lbl)
+        ma_hdr.addStretch()
         ma_layout.addLayout(ma_hdr)
 
         self.ma_list = QListWidget()
@@ -607,7 +508,8 @@ class BeltsView(QWidget):
         self.ma_list.currentItemChanged.connect(self._on_ma_selected)
         ma_layout.addWidget(self.ma_list, 1)
 
-        ma_btns = QHBoxLayout(); ma_btns.setSpacing(8)
+        ma_btns = QHBoxLayout()
+        ma_btns.setSpacing(8)
         self.btn_edit_ma = QPushButton("✎ Editar")
         self.btn_del_ma  = QPushButton("🗑 Eliminar")
         for btn in [self.btn_edit_ma, self.btn_del_ma]:
@@ -625,7 +527,8 @@ class BeltsView(QWidget):
         """)
         self.btn_edit_ma.clicked.connect(self._edit_martial_art)
         self.btn_del_ma.clicked.connect(self._delete_martial_art)
-        ma_btns.addWidget(self.btn_edit_ma); ma_btns.addWidget(self.btn_del_ma)
+        ma_btns.addWidget(self.btn_edit_ma)
+        ma_btns.addWidget(self.btn_del_ma)
         ma_layout.addLayout(ma_btns)
 
         # ── Col 2: Cinturones
@@ -645,7 +548,9 @@ class BeltsView(QWidget):
             QPushButton:hover {{ background: {RED_H}; }}
         """)
         btn_new_belt.clicked.connect(self._create_belt)
-        belt_hdr.addWidget(self.belt_title); belt_hdr.addStretch(); belt_hdr.addWidget(btn_new_belt)
+        belt_hdr.addWidget(self.belt_title)
+        belt_hdr.addStretch()
+        belt_hdr.addWidget(btn_new_belt)
         belt_layout.addLayout(belt_hdr)
 
         self.belt_table = QTableWidget()
@@ -688,7 +593,9 @@ class BeltsView(QWidget):
             QPushButton:hover {{ background: {RED_H}; }}
         """)
         btn_new_req.clicked.connect(self._create_requirement)
-        req_hdr.addWidget(self.req_title); req_hdr.addStretch(); req_hdr.addWidget(btn_new_req)
+        req_hdr.addWidget(self.req_title)
+        req_hdr.addStretch()
+        req_hdr.addWidget(btn_new_req)
         req_layout.addLayout(req_hdr)
 
         self.req_list = QListWidget()
@@ -700,7 +607,8 @@ class BeltsView(QWidget):
         """)
         req_layout.addWidget(self.req_list, 1)
 
-        req_btns = QHBoxLayout(); req_btns.setSpacing(8)
+        req_btns = QHBoxLayout()
+        req_btns.setSpacing(8)
         self.btn_edit_req = QPushButton("✎ Editar")
         self.btn_del_req  = QPushButton("🗑 Eliminar")
         for btn in [self.btn_edit_req, self.btn_del_req]:
@@ -718,7 +626,8 @@ class BeltsView(QWidget):
         """)
         self.btn_edit_req.clicked.connect(self._edit_requirement)
         self.btn_del_req.clicked.connect(self._delete_requirement)
-        req_btns.addWidget(self.btn_edit_req); req_btns.addWidget(self.btn_del_req)
+        req_btns.addWidget(self.btn_edit_req)
+        req_btns.addWidget(self.btn_del_req)
         req_layout.addLayout(req_btns)
 
         cols.addWidget(ma_card, 1)
@@ -770,90 +679,43 @@ class BeltsView(QWidget):
 
             lbl_name = QLabel(belt["name"])
             lbl_name.setStyleSheet(f"color: {TEXT_PRI}; font-size: 13px; font-weight: 500;")
-            lbl_name.setFixedWidth(120)
+            lbl_name.setFixedWidth(110)
 
-            belt_color = belt.get("color", "#888888")
-            pre_color = belt.get("pre_color")
+            belt_color = belt.get("color") or "#888888"
+            pre_color  = belt.get("pre_color")
+            border_c   = _belt_border(belt_color)
 
-            bar_container = QWidget()
-            bar_container.setFixedHeight(26)
-            bar_layout = QHBoxLayout(bar_container)
-            bar_layout.setContentsMargins(0, 0, 0, 0)
-            bar_layout.setSpacing(0)
+            # Belt bar — outer QFrame acts as the border+radius container
+            bar_container = QFrame()
+            bar_container.setFixedHeight(22)
+            bar_container.setMinimumWidth(60)
+            bar_container.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {belt_color};
+                    border-radius: 5px;
+                    border: 1.5px solid {border_c};
+                }}
+            """)
 
             if pre_color:
-    # Color base izquierda
-                bar_left = QFrame()
-                bar_left.setStyleSheet(f"""
-                    QFrame {{
-                        background-color: {belt_color};
-                        border-top-left-radius: 5px;
-                        border-bottom-left-radius: 5px;
-                        border-top-right-radius: 0px;
-                        border-bottom-right-radius: 0px;
-                    }}
-                """)
+                # Inner layout: [color fill] [thin stripe] [color fill]
+                inner = QHBoxLayout(bar_container)
+                inner.setContentsMargins(0, 0, 0, 0)
+                inner.setSpacing(0)
 
-    # Franja del pre-color — línea delgada en el centro
-                bar_stripe = QFrame()
-                bar_stripe.setFixedWidth(8)
-                bar_stripe.setStyleSheet(f"""
-                    QFrame {{
-                        background-color: {pre_color};
-                        border-radius: 0px;
-                     }}
-                """)
+                left = QFrame()
+                left.setStyleSheet("QFrame { background: transparent; border: none; }")
 
-    # Color base derecha
-                bar_right = QFrame()
-                border = "#999" if belt_color.upper() in (
-                     "#FFFFFF", "#FFD700", "#FF8C00", "#FFFF00"
-                ) else belt_color
-                bar_right.setStyleSheet(f"""
-                    QFrame {{
-                        background-color: {belt_color};
-                        border-top-left-radius: 0px;
-                        border-bottom-left-radius: 0px;
-                        border-top-right-radius: 5px;
-                        border-bottom-right-radius: 5px;
-                    }}
-                """)
+                stripe = QFrame()
+                stripe.setFixedWidth(10)
+                stripe.setStyleSheet(f"QFrame {{ background-color: {pre_color}; border: none; border-radius: 0px; }}")
 
-                bar_layout.addWidget(bar_left, 2)    # naranja
-                bar_layout.addWidget(bar_stripe)     # línea azul
-                bar_layout.addWidget(bar_right, 2)   # naranja
+                right = QFrame()
+                right.setStyleSheet("QFrame { background: transparent; border: none; }")
 
-                bar_main = QFrame()
-                border = "#999" if belt_color.upper() in (
-                    "#FFFFFF", "#FFD700", "#FF8C00", "#FFFF00"
-                ) else belt_color
-                bar_main.setStyleSheet(f"""
-                    QFrame {{
-                        background-color: {belt_color};
-                        border-top-left-radius: 0px;
-                        border-bottom-left-radius: 0px;
-                        border-top-right-radius: 5px;
-                        border-bottom-right-radius: 5px;
-                        border: 1.5px solid {border};
-                        border-left: none;
-                    }}
-                """)
-
-                bar_layout.addWidget(bar_stripe)
-                bar_layout.addWidget(bar_main, 1)
-            else:
-                bar_full = QFrame()
-                border = "#999" if belt_color.upper() in (
-                    "#FFFFFF", "#FFD700", "#FF8C00", "#FFFF00"
-                ) else belt_color
-                bar_full.setStyleSheet(f"""
-                    QFrame {{
-                        background-color: {belt_color};
-                        border-radius: 5px;
-                        border: 1.5px solid {border};
-                    }}
-                """)
-                bar_layout.addWidget(bar_full, 1)
+                inner.addWidget(left, 3)
+                inner.addWidget(stripe)
+                inner.addWidget(right, 1)
 
             cell_hl.addWidget(lbl_name)
             cell_hl.addWidget(bar_container, 1)
@@ -863,7 +725,7 @@ class BeltsView(QWidget):
             self.belt_table.setItem(i, 1, name_item)
             self.belt_table.setCellWidget(i, 1, cell_w)
 
-            # ── Col 2: Botones editar/eliminar
+            # ── Col 2: Botones
             btn_w = QWidget()
             btn_w.setStyleSheet("background: transparent;")
             btn_hl = QHBoxLayout(btn_w)
@@ -927,6 +789,7 @@ class BeltsView(QWidget):
         self.req_title.setText("REQUISITOS")
         self._selected_belt = None
 
+    # ── Martial Art CRUD
     def _create_martial_art(self):
         dlg = MartialArtDialog(self.repo, parent=self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
@@ -962,6 +825,7 @@ class BeltsView(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
 
+    # ── Belt CRUD
     def _create_belt(self):
         if not self._selected_ma:
             QMessageBox.information(self, "Aviso", "Selecciona un arte marcial primero.")
@@ -988,6 +852,7 @@ class BeltsView(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
 
+    # ── Requirement CRUD
     def _create_requirement(self):
         if not self._selected_belt:
             QMessageBox.information(self, "Aviso", "Selecciona un cinturón primero.")
