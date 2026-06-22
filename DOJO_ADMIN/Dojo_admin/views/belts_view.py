@@ -454,11 +454,26 @@ class BeltsView(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(16)
-
+        
         # Header
         hdr = QHBoxLayout()
         title = QLabel("🥋  Artes Marciales & Cinturones")
         title.setStyleSheet(f"font-size: 22px; font-weight: 700; color: {TEXT_PRI};")
+ 
+        # ── BOTÓN NUEVO: Ascenso de Cinturón ──
+        btn_promote = QPushButton("🏅  Ascender Cinturón")
+        btn_promote.setFixedHeight(38)
+        btn_promote.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_promote.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {YELLOW};
+                border: 1px solid {YELLOW}; border-radius: 7px;
+                font-size: 13px; font-weight: 600; padding: 0 18px;
+            }}
+            QPushButton:hover {{ background: #1A1600; }}
+        """)
+        btn_promote.clicked.connect(self._open_promote_dialog)
+ 
         btn_new_ma = QPushButton("＋  Nueva Arte Marcial")
         btn_new_ma.setFixedHeight(38)
         btn_new_ma.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -469,8 +484,10 @@ class BeltsView(QWidget):
             QPushButton:hover {{ background: {RED_H}; }}
         """)
         btn_new_ma.clicked.connect(self._create_martial_art)
+ 
         hdr.addWidget(title)
         hdr.addStretch()
+        hdr.addWidget(btn_promote)   # ← nuevo
         hdr.addWidget(btn_new_ma)
         root.addLayout(hdr)
 
@@ -638,6 +655,14 @@ class BeltsView(QWidget):
         self.lbl_status = QLabel("")
         self.lbl_status.setStyleSheet(f"color: {TEXT_MUT}; font-size: 11px;")
         root.addWidget(self.lbl_status)
+    
+    def _open_promote_dialog(self):
+        dlg = PromoteStudentDialog(self.repo, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            # Pequeño feedback visual
+            self.lbl_status.setText("✓  Cinturón actualizado correctamente")
+            QTimer = __import__("PyQt6.QtCore", fromlist=["QTimer"]).QTimer
+            QTimer.singleShot(3000, lambda: self.lbl_status.setText(""))
 
     def _load_martial_arts(self):
         self.ma_list.clear()
@@ -888,3 +913,445 @@ class BeltsView(QWidget):
                 self._load_requirements()
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
+
+class BeltBar(QWidget):
+    """Mini barra de color de cinturón reutilizable."""
+    def __init__(self, color: str, pre_color: str = None, height: int = 16, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(height)
+        self.setMinimumWidth(40)
+        self._color     = color or "#888888"
+        self._pre_color = pre_color
+        border = "#999999" if self._color.upper() in {
+            "#FFFFFF","#FFD700","#FF8C00","#FFFF00","#FFA500","#FFFACD"
+        } else self._color
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self._color};
+                border-radius: 4px;
+                border: 1.5px solid {border};
+            }}
+        """)
+ 
+ 
+class PromoteStudentDialog(QDialog):
+    """
+    Diálogo de ascenso de cinturón.
+    Flujo: seleccionar arte marcial → instructor (can_promote) →
+           estudiante → cinturón destino → confirmar.
+    """
+ 
+    def __init__(self, repo, parent=None):
+        super().__init__(parent)
+        self.repo = repo
+        self.setWindowTitle("Ascenso de Cinturón")
+        self.setFixedSize(560, 620)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
+        self.setStyleSheet(f"background-color: #0D0D0D; color: {TEXT_PRI};")
+ 
+        # Estado interno
+        self._sel_ma          = None
+        self._sel_instructor  = None
+        self._sel_student     = None
+        self._sel_belt        = None
+ 
+        self._build_ui()
+        self._load_martial_arts()
+ 
+    # ── UI ────────────────────────────────────────────────────────────
+    def _build_ui(self):
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+ 
+        # Scroll
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("border: none; background: transparent;")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+ 
+        container = QWidget()
+        container.setStyleSheet("background: #0D0D0D;")
+        root = QVBoxLayout(container)
+        root.setContentsMargins(28, 24, 28, 20)
+        root.setSpacing(18)
+ 
+        # ── Header ────────────────────────────────────────────────────
+        hdr = QHBoxLayout()
+        icon = QLabel("🥋"); icon.setStyleSheet("font-size: 22px;")
+        title = QLabel("Ascenso de Cinturón")
+        title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {TEXT_PRI};")
+        hdr.addWidget(icon); hdr.addSpacing(8); hdr.addWidget(title); hdr.addStretch()
+        root.addLayout(hdr)
+ 
+        sep = QFrame(); sep.setFixedHeight(2)
+        sep.setStyleSheet(f"""
+            background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                stop:0 {RED}, stop:0.4 {RED}, stop:1 transparent); border: none;
+        """)
+        root.addWidget(sep)
+ 
+        # ── Paso 1: Arte Marcial ───────────────────────────────────────
+        root.addWidget(self._step_label("1", "ARTE MARCIAL"))
+        self.cmb_ma = QComboBox()
+        self.cmb_ma.setStyleSheet(FIELD_STYLE)
+        self.cmb_ma.currentIndexChanged.connect(self._on_ma_changed)
+        root.addWidget(self.cmb_ma)
+ 
+        # ── Paso 2: Instructor ─────────────────────────────────────────
+        root.addWidget(self._step_label("2", "INSTRUCTOR (CON PERMISO DE ASCENSO)"))
+        self.cmb_instructor = QComboBox()
+        self.cmb_instructor.setStyleSheet(FIELD_STYLE)
+        self.cmb_instructor.setEnabled(False)
+        self.cmb_instructor.currentIndexChanged.connect(self._on_instructor_changed)
+        root.addWidget(self.cmb_instructor)
+ 
+        self.lbl_no_instructors = QLabel("⚠  Ningún instructor tiene permiso de ascenso en este arte.")
+        self.lbl_no_instructors.setStyleSheet(f"color: {YELLOW}; font-size: 11px;")
+        self.lbl_no_instructors.setVisible(False)
+        root.addWidget(self.lbl_no_instructors)
+ 
+        # ── Paso 3: Estudiante ─────────────────────────────────────────
+        root.addWidget(self._step_label("3", "ESTUDIANTE"))
+ 
+        # Buscador de estudiante
+        self.search_student = QLineEdit()
+        self.search_student.setPlaceholderText("🔍  Filtrar por nombre...")
+        self.search_student.setStyleSheet(FIELD_STYLE)
+        self.search_student.setEnabled(False)
+        self.search_student.textChanged.connect(self._filter_students)
+        root.addWidget(self.search_student)
+ 
+        # Lista custom de estudiantes
+        self.student_scroll = QScrollArea()
+        self.student_scroll.setWidgetResizable(True)
+        self.student_scroll.setFixedHeight(140)
+        self.student_scroll.setEnabled(False)
+        self.student_scroll.setStyleSheet(f"""
+            QScrollArea {{
+                background: #1A1A1A; border: 1.5px solid {BORDER}; border-radius: 8px;
+            }}
+            QScrollBar:vertical {{
+                background: #1A1A1A; width: 6px; border-radius: 3px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: #333; border-radius: 3px; min-height: 20px;
+            }}
+        """)
+        self.student_container = QWidget()
+        self.student_container.setStyleSheet("background: transparent;")
+        self.student_vbox = QVBoxLayout(self.student_container)
+        self.student_vbox.setContentsMargins(0, 4, 0, 4)
+        self.student_vbox.setSpacing(1)
+        self.student_scroll.setWidget(self.student_container)
+        root.addWidget(self.student_scroll)
+ 
+        # ── Paso 4: Cinturón destino ───────────────────────────────────
+        root.addWidget(self._step_label("4", "CINTURÓN DESTINO"))
+        self.cmb_belt = QComboBox()
+        self.cmb_belt.setStyleSheet(FIELD_STYLE)
+        self.cmb_belt.setEnabled(False)
+        self.cmb_belt.currentIndexChanged.connect(self._on_belt_changed)
+        root.addWidget(self.cmb_belt)
+ 
+        # Preview del cinturón seleccionado
+        self.belt_preview_row = QHBoxLayout()
+        self.belt_preview_bar = QFrame()
+        self.belt_preview_bar.setFixedHeight(20)
+        self.belt_preview_bar.setMinimumWidth(80)
+        self.belt_preview_bar.setStyleSheet(
+            "background: #333; border-radius: 5px; border: 1.5px solid #555;"
+        )
+        self.lbl_belt_preview = QLabel("")
+        self.lbl_belt_preview.setStyleSheet(f"color: {TEXT_SEC}; font-size: 11px;")
+        self.belt_preview_row.addWidget(self.belt_preview_bar)
+        self.belt_preview_row.addWidget(self.lbl_belt_preview)
+        self.belt_preview_row.addStretch()
+        root.addLayout(self.belt_preview_row)
+ 
+        # ── Error ──────────────────────────────────────────────────────
+        self.lbl_error = QLabel("")
+        self.lbl_error.setStyleSheet("color: #FF4444; font-size: 12px;")
+        self.lbl_error.setWordWrap(True)
+        root.addWidget(self.lbl_error)
+ 
+        root.addStretch()
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
+ 
+        # ── Botones fijos ──────────────────────────────────────────────
+        btn_area = QWidget()
+        btn_area.setStyleSheet(f"background: #0D0D0D; border-top: 1px solid {BORDER};")
+        btn_hl = QHBoxLayout(btn_area)
+        btn_hl.setContentsMargins(28, 14, 28, 14); btn_hl.setSpacing(10)
+ 
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setFixedHeight(42)
+        btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_cancel.setStyleSheet(f"""
+            QPushButton {{ background: transparent; color: {TEXT_SEC};
+                border: 1px solid {BORDER}; border-radius: 8px; font-size: 13px; }}
+            QPushButton:hover {{ color: {TEXT_PRI}; border-color: #555; }}
+        """)
+        btn_cancel.clicked.connect(self.reject)
+ 
+        self.btn_promote = QPushButton("🥋  Confirmar Ascenso")
+        self.btn_promote.setFixedHeight(42)
+        self.btn_promote.setEnabled(False)
+        self.btn_promote.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_promote.setStyleSheet(f"""
+            QPushButton {{
+                background: {RED}; color: white; border: none;
+                border-radius: 8px; font-size: 13px; font-weight: 700;
+            }}
+            QPushButton:hover {{ background: {RED_H}; }}
+            QPushButton:disabled {{ background: #3A1A1A; color: #666; }}
+        """)
+        self.btn_promote.clicked.connect(self._do_promote)
+ 
+        btn_hl.addWidget(btn_cancel); btn_hl.addWidget(self.btn_promote)
+        outer.addWidget(btn_area)
+ 
+    # ── Helpers UI ────────────────────────────────────────────────────
+    def _step_label(self, number: str, text: str) -> QWidget:
+        w = QWidget(); w.setStyleSheet("background: transparent;")
+        hl = QHBoxLayout(w); hl.setContentsMargins(0, 0, 0, 0); hl.setSpacing(8)
+        badge = QLabel(number)
+        badge.setFixedSize(20, 20)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setStyleSheet(f"""
+            background: {RED}; color: white; border-radius: 10px;
+            font-size: 10px; font-weight: 700;
+        """)
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"color: {TEXT_SEC}; font-size: 10px; font-weight: 700; letter-spacing: 0.8px;"
+        )
+        hl.addWidget(badge); hl.addWidget(lbl); hl.addStretch()
+        return w
+ 
+    def _make_student_row(self, s: dict) -> QWidget:
+        row = QWidget(); row.setFixedHeight(44)
+        row.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._style_student_row(row, False)
+ 
+        hl = QHBoxLayout(row)
+        hl.setContentsMargins(12, 0, 12, 0); hl.setSpacing(10)
+ 
+        # Nombre
+        lbl_name = QLabel(s["nombre"])
+        lbl_name.setStyleSheet(f"color: {TEXT_PRI}; font-size: 13px; background: transparent; border: none;")
+ 
+        # Cinturón actual — barra de color pequeña + nombre
+        belt_w = QWidget(); belt_w.setStyleSheet("background: transparent; border: none;")
+        belt_hl = QHBoxLayout(belt_w)
+        belt_hl.setContentsMargins(0, 0, 0, 0); belt_hl.setSpacing(6)
+ 
+        bar = QFrame()
+        bar.setFixedSize(28, 14)
+        color = s["belt_color"]
+        border = "#999" if color.upper() in {
+            "#FFFFFF","#FFD700","#FF8C00","#FFFF00","#FFA500","#FFFACD"
+        } else color
+        bar.setStyleSheet(f"""
+            QFrame {{ background: {color}; border-radius: 3px; border: 1.5px solid {border}; }}
+        """)
+ 
+        lbl_belt = QLabel(s["belt_name"])
+        lbl_belt.setStyleSheet(f"color: {TEXT_SEC}; font-size: 11px; background: transparent; border: none;")
+ 
+        belt_hl.addWidget(bar); belt_hl.addWidget(lbl_belt)
+ 
+        hl.addWidget(lbl_name, 1); hl.addWidget(belt_w)
+        row.mousePressEvent = lambda e, r=row, st=s: self._select_student(r, st)
+        return row
+ 
+    def _style_student_row(self, row: QWidget, selected: bool):
+        if selected:
+            row.setStyleSheet(f"""
+                QWidget {{
+                    background-color: #2A0A0C; border-radius: 6px;
+                    border-left: 3px solid {RED};
+                }}
+            """)
+        else:
+            row.setStyleSheet("""
+                QWidget { background: transparent; border-radius: 6px; border: none; }
+                QWidget:hover { background: #222; }
+            """)
+ 
+    # ── Carga de datos ────────────────────────────────────────────────
+    def _load_martial_arts(self):
+        self.cmb_ma.blockSignals(True)
+        self.cmb_ma.clear()
+        self.cmb_ma.addItem("Seleccionar arte marcial...", None)
+        for ma in self.repo.get_martial_arts():
+            self.cmb_ma.addItem(f"🥋  {ma['name']}", ma)
+        self.cmb_ma.blockSignals(False)
+ 
+    def _on_ma_changed(self, idx):
+        self._sel_ma = self.cmb_ma.itemData(idx)
+        self._sel_instructor = None
+        self._sel_student    = None
+        self._sel_belt       = None
+        self._reset_from_step(2)
+ 
+        if not self._sel_ma:
+            return
+ 
+        instructors = self.repo.get_instructors_that_can_promote(self._sel_ma["id"])
+        self.cmb_instructor.blockSignals(True)
+        self.cmb_instructor.clear()
+        self.cmb_instructor.addItem("Seleccionar instructor...", None)
+ 
+        if instructors:
+            for ins in instructors:
+                self.cmb_instructor.addItem(f"👤  {ins['nombre']}", ins)
+            self.cmb_instructor.setEnabled(True)
+            self.lbl_no_instructors.setVisible(False)
+        else:
+            self.cmb_instructor.setEnabled(False)
+            self.lbl_no_instructors.setVisible(True)
+ 
+        self.cmb_instructor.blockSignals(False)
+ 
+    def _on_instructor_changed(self, idx):
+        self._sel_instructor = self.cmb_instructor.itemData(idx)
+        self._sel_student    = None
+        self._sel_belt       = None
+        self._reset_from_step(3)
+ 
+        if not self._sel_instructor or not self._sel_ma:
+            return
+ 
+        self._all_students = self.repo.get_students_by_martial_art(self._sel_ma["id"])
+        self.search_student.setEnabled(True)
+        self.student_scroll.setEnabled(True)
+        self.search_student.clear()
+        self._populate_students(self._all_students)
+ 
+    def _filter_students(self, text):
+        text = text.lower()
+        filtered = [s for s in self._all_students if text in s["nombre"].lower()]
+        self._populate_students(filtered)
+ 
+    def _populate_students(self, students):
+        while self.student_vbox.count():
+            item = self.student_vbox.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+ 
+        if not students:
+            lbl = QLabel("Sin estudiantes en este arte marcial")
+            lbl.setStyleSheet(
+                f"color: {TEXT_MUT}; font-size: 12px; font-style: italic; padding: 10px 14px;"
+            )
+            self.student_vbox.addWidget(lbl)
+        else:
+            for s in students:
+                row = self._make_student_row(s)
+                self.student_vbox.addWidget(row)
+ 
+        self.student_vbox.addStretch()
+ 
+    def _select_student(self, clicked_row: QWidget, s: dict):
+        for i in range(self.student_vbox.count()):
+            item = self.student_vbox.itemAt(i)
+            if item and item.widget():
+                self._style_student_row(item.widget(), False)
+        self._style_student_row(clicked_row, True)
+        self._sel_student = s
+        self._sel_belt    = None
+        self._load_belts_for_student(s)
+ 
+    def _load_belts_for_student(self, s: dict):
+        self.cmb_belt.blockSignals(True)
+        self.cmb_belt.clear()
+        self.cmb_belt.addItem("Seleccionar cinturón...", None)
+ 
+        belts = self.repo.get_next_belts(self._sel_ma["id"], s["belt_orden"])
+        if belts:
+            for b in belts:
+                self.cmb_belt.addItem(f"  {b['name']}", b)
+            self.cmb_belt.setEnabled(True)
+        else:
+            self.cmb_belt.addItem("No hay cinturones superiores", None)
+            self.cmb_belt.setEnabled(False)
+ 
+        self.cmb_belt.blockSignals(False)
+        # Reset preview
+        self.belt_preview_bar.setStyleSheet(
+            "background: #333; border-radius: 5px; border: 1.5px solid #555;"
+        )
+        self.lbl_belt_preview.setText("")
+        self._check_ready()
+ 
+    def _on_belt_changed(self, idx):
+        self._sel_belt = self.cmb_belt.itemData(idx)
+        if self._sel_belt:
+            color = self._sel_belt["color"]
+            border = "#999" if color.upper() in {
+                "#FFFFFF","#FFD700","#FF8C00","#FFFF00","#FFA500","#FFFACD"
+            } else color
+            self.belt_preview_bar.setStyleSheet(f"""
+                QFrame {{
+                    background: {color}; border-radius: 5px; border: 1.5px solid {border};
+                }}
+            """)
+            self.lbl_belt_preview.setText(f"Cinturón seleccionado: {self._sel_belt['name']}")
+        else:
+            self.belt_preview_bar.setStyleSheet(
+                "background: #333; border-radius: 5px; border: 1.5px solid #555;"
+            )
+            self.lbl_belt_preview.setText("")
+        self._check_ready()
+ 
+    def _check_ready(self):
+        ok = all([self._sel_ma, self._sel_instructor, self._sel_student, self._sel_belt])
+        self.btn_promote.setEnabled(ok)
+ 
+    def _reset_from_step(self, step: int):
+        """Resetea todos los controles a partir del paso indicado."""
+        if step <= 2:
+            self.cmb_instructor.clear()
+            self.cmb_instructor.setEnabled(False)
+            self.lbl_no_instructors.setVisible(False)
+        if step <= 3:
+            self.search_student.clear()
+            self.search_student.setEnabled(False)
+            self.student_scroll.setEnabled(False)
+            while self.student_vbox.count():
+                item = self.student_vbox.takeAt(0)
+                if item.widget(): item.widget().deleteLater()
+        if step <= 4:
+            self.cmb_belt.clear()
+            self.cmb_belt.setEnabled(False)
+            self.belt_preview_bar.setStyleSheet(
+                "background: #333; border-radius: 5px; border: 1.5px solid #555;"
+            )
+            self.lbl_belt_preview.setText("")
+        self.lbl_error.setText("")
+        self.btn_promote.setEnabled(False)
+ 
+    # ── Acción ────────────────────────────────────────────────────────
+    def _do_promote(self):
+        self.lbl_error.setText("")
+        if not all([self._sel_ma, self._sel_instructor, self._sel_student, self._sel_belt]):
+            self.lbl_error.setText("⚠ Completa todos los pasos antes de confirmar.")
+            return
+ 
+        self.btn_promote.setEnabled(False)
+        self.btn_promote.setText("Procesando...")
+ 
+        try:
+            self.repo.promote_student(
+                student_id    = self._sel_student["id"],
+                belt_id       = self._sel_belt["id"],
+                instructor_id = self._sel_instructor["id"],
+                martial_art_id= self._sel_ma["id"],
+            )
+            self.accept()
+        except Exception as e:
+            self.lbl_error.setText(f"Error: {e}")
+            self.btn_promote.setEnabled(True)
+            self.btn_promote.setText("🥋  Confirmar Ascenso")
+ 

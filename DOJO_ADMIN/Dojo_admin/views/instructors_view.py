@@ -7,8 +7,9 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QLineEdit, QTableWidget, QTableWidgetItem,
     QHeaderView, QFrame, QMessageBox, QDialog,
-    QListWidget, QListWidgetItem, QCheckBox
+    QListWidget, QListWidgetItem, QCheckBox, QScrollArea
 )
+
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QColor
 
@@ -486,14 +487,359 @@ class MartialArtsDialog(QDialog):
             self.lbl_error.setText(f"Error: {e}")
 
 
-# ─── DETALLE DEL INSTRUCTOR ───────────────────────────────────────────
+"""
+PARCHE para instructors_view.py
+Reemplaza las clases MartialArtsDialog e InstructorDetail con versiones mejoradas.
+"""
+
+# ─── GESTIÓN DE ARTES MARCIALES DEL INSTRUCTOR (REDISEÑO LIMPIO) ─────
+class MartialArtsDialog(QDialog):
+    def __init__(self, repo, instructor_id, parent=None):
+        super().__init__(parent)
+        self.repo          = repo
+        self.instructor_id = instructor_id
+        self.setWindowTitle("Artes Marciales del Instructor")
+        self.setFixedSize(460, 500)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
+        self.setStyleSheet(f"background-color: #111111; color: {TEXT_PRI};")
+
+        self._selected_ma_id = None  # id de instructor_martial_arts seleccionado
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(22, 18, 22, 18)
+        root.setSpacing(14)
+
+        # ── Sección ASIGNADAS ─────────────────────────────────────────
+        hdr1 = QHBoxLayout()
+        lbl1 = QLabel("ASIGNADAS")
+        lbl1.setStyleSheet(
+            f"color: {TEXT_SEC}; font-size: 10px; font-weight: 700; letter-spacing: 0.8px;"
+        )
+        self.btn_remove = QPushButton("🗑  Quitar")
+        self.btn_remove.setFixedHeight(28)
+        self.btn_remove.setEnabled(False)
+        self.btn_remove.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_remove.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: #FF4444;
+                border: 1px solid #FF4444; border-radius: 6px;
+                font-size: 11px; font-weight: 600; padding: 0 12px;
+            }}
+            QPushButton:hover {{ background: #2A0A0A; }}
+            QPushButton:disabled {{ color: #3A1A1A; border-color: #2A1A1A; }}
+        """)
+        self.btn_remove.clicked.connect(self._remove_ma)
+        hdr1.addWidget(lbl1); hdr1.addStretch(); hdr1.addWidget(self.btn_remove)
+        root.addLayout(hdr1)
+
+        # Scroll area para las filas asignadas
+        self.assigned_scroll = QScrollArea()
+        self.assigned_scroll.setWidgetResizable(True)
+        self.assigned_scroll.setFixedHeight(160)
+        self.assigned_scroll.setStyleSheet(f"""
+            QScrollArea {{
+                background: #1A1A1A;
+                border: 1.5px solid {BORDER};
+                border-radius: 8px;
+            }}
+            QScrollBar:vertical {{
+                background: #1A1A1A; width: 6px; border-radius: 3px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: #333; border-radius: 3px; min-height: 20px;
+            }}
+        """)
+        self.assigned_container = QWidget()
+        self.assigned_container.setStyleSheet("background: transparent;")
+        self.assigned_vbox = QVBoxLayout(self.assigned_container)
+        self.assigned_vbox.setContentsMargins(0, 4, 0, 4)
+        self.assigned_vbox.setSpacing(2)
+        self.assigned_scroll.setWidget(self.assigned_container)
+        root.addWidget(self.assigned_scroll)
+
+
+        # ── Sección AGREGAR ───────────────────────────────────────────
+        lbl2 = QLabel("AGREGAR ARTE MARCIAL")
+        lbl2.setStyleSheet(
+            f"color: {TEXT_SEC}; font-size: 10px; font-weight: 700; letter-spacing: 0.8px;"
+        )
+        root.addWidget(lbl2)
+
+        self.avail_scroll = QScrollArea()
+        self.avail_scroll.setWidgetResizable(True)
+        self.avail_scroll.setFixedHeight(120)
+        self.avail_scroll.setStyleSheet(f"""
+            QScrollArea {{
+                background: #1A1A1A;
+                border: 1.5px solid {BORDER};
+                border-radius: 8px;
+            }}
+            QScrollBar:vertical {{
+                background: #1A1A1A; width: 6px; border-radius: 3px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: #333; border-radius: 3px; min-height: 20px;
+            }}
+        """)
+        self.avail_container = QWidget()
+        self.avail_container.setStyleSheet("background: transparent;")
+        self.avail_vbox = QVBoxLayout(self.avail_container)
+        self.avail_vbox.setContentsMargins(0, 4, 0, 4)
+        self.avail_vbox.setSpacing(2)
+        self.avail_scroll.setWidget(self.avail_container)
+        root.addWidget(self.avail_scroll)
+
+        # Fila checkbox + botón agregar
+        add_row = QHBoxLayout(); add_row.setSpacing(10)
+        self.chk_promote = QCheckBox("Puede promover estudiantes")
+        self.chk_promote.setStyleSheet(f"""
+            QCheckBox {{
+                color: {TEXT_PRI}; font-size: 12px;
+                spacing: 8px; background: transparent; border: none;
+            }}
+            QCheckBox::indicator {{
+                width: 16px; height: 16px; border-radius: 4px;
+                border: 1.5px solid {BORDER}; background: #1C1C1C;
+            }}
+            QCheckBox::indicator:checked {{
+                background: {RED}; border-color: {RED};
+            }}
+            QCheckBox::indicator:hover {{ border-color: {RED}; }}
+        """)
+        self.btn_add = QPushButton("＋  Agregar")
+        self.btn_add.setFixedHeight(34)
+        self.btn_add.setFixedWidth(110)
+        self.btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_add.setStyleSheet(f"""
+            QPushButton {{
+                background: {RED}; color: white; border: none;
+                border-radius: 7px; font-size: 12px; font-weight: 700;
+            }}
+            QPushButton:hover {{ background: {RED_H}; }}
+            QPushButton:disabled {{ background: #3A1A1A; color: #666; }}
+        """)
+        self.btn_add.clicked.connect(self._add_ma)
+        add_row.addWidget(self.chk_promote, 1); add_row.addWidget(self.btn_add)
+        root.addLayout(add_row)
+
+        # Error + cerrar
+        self.lbl_error = QLabel("")
+        self.lbl_error.setStyleSheet("color: #FF4444; font-size: 11px;")
+        self.lbl_error.setFixedHeight(16)
+        root.addWidget(self.lbl_error)
+
+        btn_close = QPushButton("Cerrar")
+        btn_close.setFixedHeight(34)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {TEXT_SEC};
+                border: 1px solid {BORDER}; border-radius: 7px; font-size: 13px;
+            }}
+            QPushButton:hover {{ color: {TEXT_PRI}; border-color: #555; }}
+        """)
+        btn_close.clicked.connect(self.accept)
+        root.addWidget(btn_close)
+
+        self._load_data()
+
+    # ── Helpers de fila ───────────────────────────────────────────────
+    def _make_assigned_row(self, a: dict) -> QWidget:
+        """Crea una fila seleccionable para la lista de asignadas."""
+        row = QWidget()
+        row.setFixedHeight(38)
+        row.setCursor(Qt.CursorShape.PointingHandCursor)
+        row.setProperty("ma_data", a)
+        row.setProperty("selected", False)
+        self._style_assigned_row(row, False)
+
+        hl = QHBoxLayout(row)
+        hl.setContentsMargins(12, 0, 12, 0)
+        hl.setSpacing(10)
+
+        icon = QLabel("🥋")
+        icon.setStyleSheet("font-size: 13px; background: transparent; border: none;")
+        icon.setFixedWidth(20)
+
+        lbl = QLabel(a["ma_name"])
+        lbl.setStyleSheet("color: #F0F0F0; font-size: 13px; background: transparent; border: none;")
+
+        promo = QLabel()
+        if a["can_promote"]:
+            promo.setText("★ Puede promover")
+            promo.setStyleSheet(f"color: {ORANGE}; font-size: 10px; font-weight: 600; background: transparent; border: none;")
+
+        hl.addWidget(icon); hl.addWidget(lbl, 1); hl.addWidget(promo)
+
+        row.mousePressEvent = lambda e, r=row, aid=a: self._select_assigned(r, aid)
+        return row
+
+    def _style_assigned_row(self, row: QWidget, selected: bool):
+        if selected:
+            row.setStyleSheet(f"""
+                QWidget {{
+                    background-color: #2A0A0C;
+                    border-radius: 6px;
+                    border-left: 3px solid {RED};
+                }}
+            """)
+        else:
+            row.setStyleSheet(f"""
+                QWidget {{
+                    background-color: transparent;
+                    border-radius: 6px;
+                    border: none;
+                }}
+                QWidget:hover {{ background-color: #222222; }}
+            """)
+
+    def _make_avail_row(self, ma: dict) -> QWidget:
+        """Crea una fila seleccionable para las artes disponibles."""
+        row = QWidget()
+        row.setFixedHeight(36)
+        row.setCursor(Qt.CursorShape.PointingHandCursor)
+        row.setProperty("ma_data", ma)
+        row.setProperty("selected", False)
+        self._style_avail_row(row, False)
+
+        hl = QHBoxLayout(row)
+        hl.setContentsMargins(12, 0, 12, 0)
+        hl.setSpacing(8)
+
+        lbl = QLabel(ma["name"])
+        lbl.setStyleSheet("color: #D0D0D0; font-size: 13px; background: transparent; border: none;")
+        hl.addWidget(lbl)
+
+        row.mousePressEvent = lambda e, r=row, m=ma: self._select_avail(r, m)
+        return row
+
+    def _style_avail_row(self, row: QWidget, selected: bool):
+        if selected:
+            row.setStyleSheet(f"""
+                QWidget {{
+                    background-color: #1A0A0C;
+                    border-radius: 6px;
+                    border-left: 3px solid {RED};
+                }}
+            """)
+        else:
+            row.setStyleSheet(f"""
+                QWidget {{
+                    background-color: transparent;
+                    border-radius: 6px;
+                    border: none;
+                }}
+                QWidget:hover {{ background-color: #222222; }}
+            """)
+
+    # ── Selección ─────────────────────────────────────────────────────
+    def _select_assigned(self, clicked_row: QWidget, a: dict):
+        # Deseleccionar todas
+        for i in range(self.assigned_vbox.count()):
+            item = self.assigned_vbox.itemAt(i)
+            if item and item.widget():
+                self._style_assigned_row(item.widget(), False)
+        # Seleccionar la clickeada
+        self._style_assigned_row(clicked_row, True)
+        self._selected_assigned = a
+        self.btn_remove.setEnabled(True)
+
+    def _select_avail(self, clicked_row: QWidget, ma: dict):
+        for i in range(self.avail_vbox.count()):
+            item = self.avail_vbox.itemAt(i)
+            if item and item.widget():
+                self._style_avail_row(item.widget(), False)
+        self._style_avail_row(clicked_row, True)
+        self._selected_avail = ma
+        self.btn_add.setEnabled(True)
+
+    # ── Carga de datos ────────────────────────────────────────────────
+    def _load_data(self):
+        self._selected_assigned = None
+        self._selected_avail    = None
+        self.btn_remove.setEnabled(False)
+
+        # Limpiar asignadas
+        while self.assigned_vbox.count():
+            item = self.assigned_vbox.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+
+        assigned     = self.repo.get_instructor_martial_arts(self.instructor_id)
+        assigned_ids = set()
+
+        if assigned:
+            for a in assigned:
+                row = self._make_assigned_row(a)
+                self.assigned_vbox.addWidget(row)
+                assigned_ids.add(a["ma_id"])
+        else:
+            lbl = QLabel("Sin artes marciales asignadas")
+            lbl.setStyleSheet(
+                f"color: {TEXT_MUT}; font-size: 12px; font-style: italic; "
+                "padding: 12px 14px; background: transparent;"
+            )
+            self.assigned_vbox.addWidget(lbl)
+
+        self.assigned_vbox.addStretch()
+
+        # Limpiar disponibles
+        while self.avail_vbox.count():
+            item = self.avail_vbox.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+
+        available = [ma for ma in self.repo.get_martial_arts() if ma["id"] not in assigned_ids]
+        self.btn_add.setEnabled(False)
+
+        if available:
+            for ma in available:
+                row = self._make_avail_row(ma)
+                self.avail_vbox.addWidget(row)
+        else:
+            lbl = QLabel("Todas las artes marciales ya están asignadas")
+            lbl.setStyleSheet(
+                f"color: {TEXT_MUT}; font-size: 12px; font-style: italic; "
+                "padding: 12px 14px; background: transparent;"
+            )
+            self.avail_vbox.addWidget(lbl)
+
+        self.avail_vbox.addStretch()
+
+    # ── Acciones ──────────────────────────────────────────────────────
+    def _add_ma(self):
+        self.lbl_error.setText("")
+        if not hasattr(self, "_selected_avail") or not self._selected_avail:
+            self.lbl_error.setText("⚠ Selecciona un arte marcial de la lista.")
+            return
+        try:
+            self.repo.assign_instructor_martial_art(
+                self.instructor_id,
+                self._selected_avail["id"],
+                self.chk_promote.isChecked()
+            )
+            self.chk_promote.setChecked(False)
+            self._load_data()
+        except Exception as e:
+            self.lbl_error.setText(f"Error: {e}")
+
+    def _remove_ma(self):
+        self.lbl_error.setText("")
+        if not hasattr(self, "_selected_assigned") or not self._selected_assigned:
+            self.lbl_error.setText("⚠ Selecciona una asignación para quitar.")
+            return
+        try:
+            self.repo.remove_instructor_martial_art(self._selected_assigned["id"])
+            self._load_data()
+        except Exception as e:
+            self.lbl_error.setText(f"Error: {e}")
+
+# ─── DETALLE DEL INSTRUCTOR (MEJORADO) ───────────────────────────────
 class InstructorDetail(QDialog):
     def __init__(self, instructor_id, repo, parent=None):
         super().__init__(parent)
         self.instructor_id = instructor_id
         self.repo          = repo
         self.setWindowTitle("Detalle del Instructor")
-        self.setFixedSize(660, 520)
+        self.setFixedSize(680, 500)
         self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self.setStyleSheet("background-color: #111111; color: #F0F0F0;")
 
@@ -503,29 +849,32 @@ class InstructorDetail(QDialog):
         mas     = repo.get_instructor_martial_arts(instructor_id)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 20)
-        root.setSpacing(14)
+        root.setContentsMargins(24, 22, 24, 18)
+        root.setSpacing(12)
 
-        # ── Cabecera
-        hdr = QHBoxLayout(); hdr.setSpacing(16)
+        # ── Cabecera ──────────────────────────────────────────────────
+        hdr = QHBoxLayout(); hdr.setSpacing(14)
         nombre = f"{(data or {}).get('first_name','')} {(data or {}).get('last_name','')}".strip()
         initials = "".join(p[0].upper() for p in nombre.split()[:2] if p)
+
         avatar = QLabel(initials or "?")
-        avatar.setFixedSize(64, 64)
+        avatar.setFixedSize(60, 60)
         avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         avatar.setStyleSheet(
-            "background-color: #1A1A1A; color: #C8102E; font-size: 20px; "
-            "font-weight: 700; border-radius: 32px; border: 2px solid #2A2A2A;"
+            "background-color: #1A1A1A; color: #C8102E; font-size: 18px; "
+            "font-weight: 700; border-radius: 30px; border: 2px solid #2A2A2A;"
         )
-        info_col = QVBoxLayout(); info_col.setSpacing(4)
+
+        info_col = QVBoxLayout(); info_col.setSpacing(3)
         lbl_name = QLabel(nombre or "—")
         lbl_name.setStyleSheet("font-size: 17px; font-weight: 700; color: #F0F0F0;")
-        lbl_sub = QLabel(
+        lbl_sub  = QLabel(
             f"Instructor  ·  ID: {(data or {}).get('id','—')}  ·  "
             f"{total_c} clase{'s' if total_c != 1 else ''} impartida{'s' if total_c != 1 else ''}"
         )
         lbl_sub.setStyleSheet("font-size: 11px; color: #666;")
         info_col.addWidget(lbl_name); info_col.addWidget(lbl_sub)
+
         badge = QLabel("🥋  Instructor")
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter); badge.setFixedHeight(26)
         badge.setStyleSheet(f"""
@@ -533,10 +882,13 @@ class InstructorDetail(QDialog):
             border: 1px solid {ORANGE}; border-radius: 6px;
             font-size: 11px; font-weight: 600; padding: 0 12px;
         """)
-        hdr.addWidget(avatar); hdr.addLayout(info_col, 1)
+
+        hdr.addWidget(avatar)
+        hdr.addLayout(info_col, 1)
         hdr.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         root.addLayout(hdr)
 
+        # Separador rojo
         sep = QFrame(); sep.setFixedHeight(2)
         sep.setStyleSheet("""
             background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
@@ -544,89 +896,151 @@ class InstructorDetail(QDialog):
         """)
         root.addWidget(sep)
 
-        # ── Tarjetas
+        # ── Fila de tarjetas ──────────────────────────────────────────
         cards_row = QHBoxLayout(); cards_row.setSpacing(12)
 
-        personal = _make_card()
-        pl = QVBoxLayout(personal)
-        pl.setContentsMargins(14, 14, 14, 14); pl.setSpacing(6)
-        pl.addWidget(self._slbl("DATOS PERSONALES"))
-        pl.addLayout(self._drow("Email",    (data or {}).get("email") or "—"))
-        pl.addLayout(self._drow("Teléfono", (data or {}).get("phone") or "—"))
-        pl.addWidget(self._slbl("ARTES MARCIALES"))
+        # ── Tarjeta izquierda: Datos + Artes Marciales
+        left_card = _make_card()
+        ll = QVBoxLayout(left_card)
+        ll.setContentsMargins(16, 14, 16, 14); ll.setSpacing(0)
+
+        # Datos personales
+        ll.addWidget(self._slbl("DATOS PERSONALES"))
+        ll.addSpacing(6)
+        ll.addLayout(self._drow("Email",    (data or {}).get("email") or "—"))
+        ll.addLayout(self._drow("Teléfono", (data or {}).get("phone") or "—"))
+        ll.addSpacing(14)
+
+        # Separador interno
+        inner_sep = QFrame(); inner_sep.setFixedHeight(1)
+        inner_sep.setStyleSheet("background: #222; border: none;")
+        ll.addWidget(inner_sep)
+        ll.addSpacing(12)
+
+        # Artes marciales
+        ll.addWidget(self._slbl("ARTES MARCIALES"))
+        ll.addSpacing(6)
+
         if mas:
             for m in mas:
-                r = QHBoxLayout()
-                dot = QLabel("●"); dot.setStyleSheet(f"color: {RED}; font-size: 10px;"); dot.setFixedWidth(14)
-                lbl_ma = QLabel(m["ma_name"]); lbl_ma.setStyleSheet("color: #F0F0F0; font-size: 12px;")
-                promo = QLabel("★ Puede promover" if m["can_promote"] else "")
+                r = QHBoxLayout(); r.setSpacing(8)
+                dot = QLabel("●")
+                dot.setStyleSheet(f"color: {RED}; font-size: 9px;")
+                dot.setFixedWidth(12)
+                lbl_ma = QLabel(m["ma_name"])
+                lbl_ma.setStyleSheet("color: #F0F0F0; font-size: 12px;")
+                promo_text = "★ Puede promover" if m["can_promote"] else ""
+                promo = QLabel(promo_text)
                 promo.setStyleSheet(f"color: {ORANGE}; font-size: 10px;")
                 r.addWidget(dot); r.addWidget(lbl_ma, 1); r.addWidget(promo)
-                pl.addLayout(r)
+                ll.addLayout(r)
+                ll.addSpacing(2)
         else:
             none_ma = QLabel("Sin artes marciales asignadas")
-            none_ma.setStyleSheet(f"color: {TEXT_MUT}; font-size: 12px;")
-            pl.addWidget(none_ma)
-        pl.addStretch()
-        cards_row.addWidget(personal)
+            none_ma.setStyleSheet(f"color: {TEXT_MUT}; font-size: 12px; font-style: italic;")
+            ll.addWidget(none_ma)
 
-        classes_card = _make_card()
-        cl = QVBoxLayout(classes_card)
-        cl.setContentsMargins(14, 14, 14, 14); cl.setSpacing(6)
+        ll.addStretch()
+        cards_row.addWidget(left_card, 1)
+
+        # ── Tarjeta derecha: Últimas clases
+        right_card = _make_card()
+        cl = QVBoxLayout(right_card)
+        cl.setContentsMargins(16, 14, 16, 14); cl.setSpacing(0)
         cl.addWidget(self._slbl("ÚLTIMAS CLASES"))
+        cl.addSpacing(6)
+
         if classes:
             for fecha, clase, arte in classes:
-                r = QHBoxLayout()
-                dot = QLabel("●"); dot.setStyleSheet(f"color: {BLUE}; font-size: 10px;"); dot.setFixedWidth(14)
-                lbl_c = QLabel(str(clase)); lbl_c.setStyleSheet("color: #F0F0F0; font-size: 12px;")
-                lbl_d = QLabel(str(fecha)); lbl_d.setStyleSheet("color: #555; font-size: 11px;")
+                r = QHBoxLayout(); r.setSpacing(8)
+                dot = QLabel("●")
+                dot.setStyleSheet(f"color: {BLUE}; font-size: 9px;")
+                dot.setFixedWidth(12)
+                # Nombre clase + arte entre paréntesis
+                clase_text = str(clase)
+                if arte and arte != "—":
+                    clase_text += f"  ({arte})"
+                lbl_c = QLabel(clase_text)
+                lbl_c.setStyleSheet("color: #F0F0F0; font-size: 12px;")
+                lbl_d = QLabel(str(fecha))
+                lbl_d.setStyleSheet("color: #555; font-size: 11px;")
                 lbl_d.setAlignment(Qt.AlignmentFlag.AlignRight)
+                lbl_d.setMinimumWidth(60)
                 r.addWidget(dot); r.addWidget(lbl_c, 1); r.addWidget(lbl_d)
                 cl.addLayout(r)
+                cl.addSpacing(4)
         else:
-            none_c = QLabel("Sin clases registradas")
-            none_c.setStyleSheet(f"color: {TEXT_MUT}; font-size: 12px;")
-            cl.addWidget(none_c)
+            # Estado vacío con icono
+            empty_w = QWidget(); empty_w.setStyleSheet("background: transparent;")
+            empty_l = QVBoxLayout(empty_w)
+            empty_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icon_lbl = QLabel("🗓️")
+            icon_lbl.setStyleSheet("font-size: 28px;")
+            icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            msg_lbl = QLabel("Sin clases registradas")
+            msg_lbl.setStyleSheet(f"color: {TEXT_MUT}; font-size: 12px;")
+            msg_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_l.addWidget(icon_lbl); empty_l.addWidget(msg_lbl)
+            cl.addWidget(empty_w, 1)
+
         cl.addStretch()
-        cards_row.addWidget(classes_card)
+        cards_row.addWidget(right_card, 1)
+
         root.addLayout(cards_row, 1)
 
-        # ── Botones
-        btn_row = QHBoxLayout(); btn_row.setSpacing(10)
+        # ── Fila de botones ───────────────────────────────────────────
+        btn_row = QHBoxLayout(); btn_row.setSpacing(8)
+
         btn_ma = QPushButton("🥋  Artes Marciales")
-        btn_ma.setFixedHeight(38); btn_ma.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_ma.setFixedHeight(36)
+        btn_ma.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_ma.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {ORANGE};
-                border: 1px solid {ORANGE}; border-radius: 7px; font-size: 13px; }}
+            QPushButton {{
+                background: transparent; color: {ORANGE};
+                border: 1px solid {ORANGE}; border-radius: 7px;
+                font-size: 12px; font-weight: 600; padding: 0 14px;
+            }}
             QPushButton:hover {{ background: #1A1000; }}
         """)
         btn_ma.clicked.connect(self._manage_martial_arts)
 
         btn_edit = QPushButton("✎  Editar")
-        btn_edit.setFixedHeight(38); btn_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_edit.setFixedHeight(36)
+        btn_edit.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_edit.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {TEXT_SEC};
-                border: 1px solid {BORDER}; border-radius: 7px; font-size: 13px; }}
+            QPushButton {{
+                background: transparent; color: {TEXT_SEC};
+                border: 1px solid {BORDER}; border-radius: 7px; font-size: 12px;
+            }}
             QPushButton:hover {{ color: {TEXT_PRI}; border-color: #555; }}
         """)
         btn_edit.clicked.connect(self._open_edit)
 
         btn_close = QPushButton("Cerrar")
-        btn_close.setFixedHeight(38); btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_close.setFixedHeight(36)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_close.setStyleSheet(f"""
-            QPushButton {{ background: {RED}; color: white; border: none;
-                border-radius: 7px; font-size: 13px; font-weight: 700; }}
+            QPushButton {{
+                background: {RED}; color: white; border: none;
+                border-radius: 7px; font-size: 12px; font-weight: 700;
+                padding: 0 20px;
+            }}
             QPushButton:hover {{ background: {RED_H}; }}
         """)
         btn_close.clicked.connect(self.reject)
 
-        btn_row.addWidget(btn_ma); btn_row.addStretch()
-        btn_row.addWidget(btn_edit); btn_row.addWidget(btn_close)
+        btn_row.addWidget(btn_ma)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_edit)
+        btn_row.addWidget(btn_close)
         root.addLayout(btn_row)
 
     def _slbl(self, text):
         l = QLabel(text)
-        l.setStyleSheet("font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #555; padding: 6px 0 4px 0;")
+        l.setStyleSheet(
+            "font-size: 10px; font-weight: 700; letter-spacing: 1px; "
+            "color: #555; padding-bottom: 2px;"
+        )
         return l
 
     def _drow(self, key, val, val_color="#F0F0F0"):

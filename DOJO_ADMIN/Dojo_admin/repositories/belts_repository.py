@@ -179,3 +179,132 @@ class BeltsRepository:
             conn.rollback(); raise
         finally:
             cur.close(); db.release(conn)
+     
+    def get_instructors_that_can_promote(self, martial_art_id: int) -> list:
+        """Retorna instructores con permiso can_promote para un arte marcial."""
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT
+                    i.id,
+                    p.first_name || ' ' || p.last_name AS nombre
+                FROM instructor_martial_arts ima
+                JOIN instructors i  ON i.id  = ima.id_instructor
+                JOIN people      p  ON p.id  = i.id_person
+                WHERE ima.id_martial_art = %s
+                  AND ima.can_promote = TRUE
+                ORDER BY p.first_name, p.last_name
+            """, (martial_art_id,))
+            return [{"id": r[0], "nombre": r[1]} for r in cur.fetchall()]
+        finally:
+            cur.close(); db.release(conn)
+ 
+    def get_students_by_martial_art(self, martial_art_id: int) -> list:
+            """
+            Retorna todos los estudiantes activos con su cinturón actual
+            en el arte marcial dado (si tienen uno).
+            """
+            conn = db.get_conn()
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT
+                        s.id,
+                        p.first_name || ' ' || p.last_name  AS nombre,
+                        COALESCE(b.id,    0)                 AS belt_id,
+                        COALESCE(b.name, 'Sin cinturón')     AS belt_name,
+                        COALESCE(b.color, '#888888')          AS belt_color,
+                        COALESCE(b.orden, 0)                  AS belt_orden
+                    FROM students s
+                    JOIN people p  ON p.id  = s.id_person
+                    JOIN status st ON st.id = s.id_status
+                        AND LOWER(st.status) IN ('activo', 'active')
+                    LEFT JOIN students_belts sb ON sb.id_student = s.id
+                    LEFT JOIN belts b
+                        ON b.id = sb.id_belt
+                        AND b.id_martial_art = %s
+                    ORDER BY p.first_name, p.last_name
+                """, (martial_art_id,))
+                return [
+                    {
+                        "id":         r[0],
+                        "nombre":     r[1],
+                        "belt_id":    r[2],
+                        "belt_name":  r[3],
+                        "belt_color": r[4],
+                        "belt_orden": r[5],
+                    }
+                    for r in cur.fetchall()
+                ]
+            finally:
+                cur.close(); db.release(conn)
+ 
+    def get_next_belts(self, martial_art_id: int, current_orden: int) -> list:
+        """Cinturones disponibles para ascender (orden > actual)."""
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, name, color, orden
+                FROM belts
+                WHERE id_martial_art = %s
+                  AND (orden > %s OR %s = 0)
+                ORDER BY orden ASC NULLS LAST, name
+            """, (martial_art_id, current_orden, current_orden))
+            return [
+                {"id": r[0], "name": r[1], "color": r[2] or "#888888", "orden": r[3]}
+                for r in cur.fetchall()
+            ]
+        finally:
+            cur.close(); db.release(conn)
+ 
+    def promote_student(self, student_id: int, belt_id: int, instructor_id: int,
+                        martial_art_id: int):
+        """
+        Asciende al estudiante:
+        1. Actualiza o inserta en students_belts (cinturón actual)
+        2. Inserta en students_belts_history
+        Valida que el instructor tenga can_promote en ese arte.
+        """
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+ 
+            # Verificar permiso del instructor
+            cur.execute("""
+                SELECT can_promote FROM instructor_martial_arts
+                WHERE id_instructor = %s AND id_martial_art = %s
+            """, (instructor_id, martial_art_id))
+            row = cur.fetchone()
+            if not row or not row[0]:
+                raise ValueError("Este instructor no tiene permiso para promover en este arte marcial.")
+ 
+            # Upsert cinturón actual en students_belts
+            cur.execute("""
+                SELECT id FROM students_belts WHERE id_student = %s
+            """, (student_id,))
+            existing = cur.fetchone()
+            if existing:
+                cur.execute("""
+                    UPDATE students_belts SET id_belt = %s WHERE id_student = %s
+                """, (belt_id, student_id))
+            else:
+                cur.execute("""
+                    INSERT INTO students_belts (id_student, id_belt)
+                    VALUES (%s, %s)
+                """, (student_id, belt_id))
+ 
+            # Registrar en historial
+            cur.execute("""
+                INSERT INTO students_belts_history
+                    (id_student, id_belt, action, date_changed)
+                VALUES (%s, %s, 'promotion', NOW())
+            """, (student_id, belt_id))
+ 
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close(); db.release(conn)
