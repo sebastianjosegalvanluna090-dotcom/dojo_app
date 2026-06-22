@@ -52,35 +52,47 @@ class BeltsRepository:
         try:
             cur = conn.cursor()
             cur.execute("""
-                SELECT id, name, orden FROM belts
+                SELECT id, name, orden,
+                       COALESCE(color, '#888888'),
+                       pre_color
+                FROM belts
                 WHERE id_martial_art = %s
                 ORDER BY orden ASC NULLS LAST, name
             """, (martial_art_id,))
-            return [{"id": r[0], "name": r[1], "orden": r[2]} for r in cur.fetchall()]
+            return [
+                {
+                    "id": r[0],
+                    "name": r[1],
+                    "orden": r[2],
+                    "color": r[3],
+                    "pre_color": r[4],
+                }
+                for r in cur.fetchall()
+            ]
         finally:
             cur.close(); db.release(conn)
 
-    def create_belt(self, martial_art_id: int, name: str, orden: int = None):
+    def create_belt(self, martial_art_id: int, name: str, orden: int = None, color: str = None, pre_color: str = None):
         conn = db.get_conn()
         try:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO belts (name, id_martial_art, orden)
-                VALUES (%s, %s, %s)
-            """, (name, martial_art_id, orden))
+                INSERT INTO belts (name, id_martial_art, orden, color, pre_color)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (name, martial_art_id, orden, color, pre_color))
             conn.commit()
         except:
             conn.rollback(); raise
         finally:
             cur.close(); db.release(conn)
 
-    def update_belt(self, belt_id: int, name: str, orden: int = None):
+    def update_belt(self, belt_id: int, name: str, orden: int = None, color: str = None, pre_color: str = None):
         conn = db.get_conn()
         try:
             cur = conn.cursor()
             cur.execute("""
-                UPDATE belts SET name = %s, orden = %s WHERE id = %s
-            """, (name, orden, belt_id))
+                UPDATE belts SET name = %s, orden = %s, color = %s, pre_color = %s WHERE id = %s
+            """, (name, orden, color, pre_color, belt_id))
             conn.commit()
         except:
             conn.rollback(); raise
