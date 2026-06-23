@@ -10,33 +10,34 @@ class StudentRepository:
             query = """
                 SELECT
                     s.id,
-                    p.first_name || ' ' || p.last_name   AS nombre,
-                    td.type_document || ': ' || s.document AS documento,
+                    p.first_name || ' ' || p.last_name      AS nombre,
+                    COALESCE(td.type_document || ': ' || s.document,
+                             '—')                           AS documento,
                     p.phone,
                     p.email,
-                    COALESCE(st.status, 'Sin estado')     AS estado,
-                    COALESCE(ma.name,  'Sin arte')        AS arte_marcial,
-                    COALESCE(cat.name, 'Sin categoría')   AS categoria,
-                    p.created_at::date                    AS fecha_ingreso,
+                    COALESCE(st.status, 'Sin estado')        AS estado,
+                    COALESCE(cat.name,  'Sin categoría')     AS categoria,
+                    p.created_at::date                       AS fecha_ingreso,
                     s.id_person,
                     p.first_name,
                     p.last_name,
                     p.birthdate,
-                    s.document                            AS doc_numero,
+                    s.document                               AS doc_numero,
                     s.id_type_document,
                     s.id_status,
-                    s.category_id
+                    s.category_id,
+                    COALESCE(b.name,     'Sin cinturón')     AS cinturon,
+                    COALESCE(b.color,    '#888888')           AS belt_color,
+                    COALESCE(b.pre_color, NULL)              AS belt_pre_color,
+                    COALESCE(ma.name,    'Sin arte')          AS arte_marcial
                 FROM students s
-                JOIN people p         ON p.id  = s.id_person
+                JOIN people p              ON p.id  = s.id_person
                 LEFT JOIN type_document td ON td.id = s.id_type_document
                 LEFT JOIN status st        ON st.id = s.id_status
                 LEFT JOIN categories cat   ON cat.id = s.category_id
-                LEFT JOIN student_memberships sm
-                       ON sm.id_student = s.id
-                      AND sm.status = 'activo'
-                LEFT JOIN membership_plans mp ON mp.id = sm.id_membership_plan
-                LEFT JOIN type_products tp    ON tp.id = mp.id_type_product
-                LEFT JOIN martial_arts ma     ON ma.name = tp.name
+                LEFT JOIN students_belts sb ON sb.id_student = s.id
+                LEFT JOIN belts b           ON b.id = sb.id_belt
+                LEFT JOIN martial_arts ma   ON ma.id = b.id_martial_art
             """
             params = []
             if search:

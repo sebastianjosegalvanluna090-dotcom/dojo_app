@@ -53,12 +53,15 @@ class BeltsRepository:
             cur = conn.cursor()
             cur.execute("""
                 SELECT id, name, orden,
-                       COALESCE(color, '#888888'),
-                       pre_color
+                    COALESCE(color, '#888888'),
+                    pre_color,
+                    COALESCE(grades, 0),
+                    COALESCE(grade_color, '#FFFFFF')
                 FROM belts
                 WHERE id_martial_art = %s
                 ORDER BY orden ASC NULLS LAST, name
             """, (martial_art_id,))
+
             return [
                 {
                     "id": r[0],
@@ -66,33 +69,43 @@ class BeltsRepository:
                     "orden": r[2],
                     "color": r[3],
                     "pre_color": r[4],
+                    "grades": r[5],
+                    "grade_color": r[6],
                 }
                 for r in cur.fetchall()
             ]
         finally:
-            cur.close(); db.release(conn)
+            cur.close()
+            db.release(conn)
 
-    def create_belt(self, martial_art_id: int, name: str, orden: int = None, color: str = None, pre_color: str = None):
+    def create_belt(self, martial_art_id: int, name: str, orden: int = None, color: str = None, pre_color: str = None, grades: int = 0, grade_color: str = "#FFFFFF"):
         conn = db.get_conn()
         try:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO belts (name, id_martial_art, orden, color, pre_color)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (name, martial_art_id, orden, color, pre_color))
+                INSERT INTO belts (name, id_martial_art, orden, color, pre_color, grades, grade_color)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (name, martial_art_id, orden, color, pre_color, grades, grade_color))
             conn.commit()
         except:
             conn.rollback(); raise
         finally:
             cur.close(); db.release(conn)
 
-    def update_belt(self, belt_id: int, name: str, orden: int = None, color: str = None, pre_color: str = None):
+    def update_belt(self, belt_id: int, name: str, orden: int = None, color: str = None, pre_color: str = None, grades: int = 0, grade_color: str = "#FFFFFF"):
         conn = db.get_conn()
         try:
             cur = conn.cursor()
             cur.execute("""
-                UPDATE belts SET name = %s, orden = %s, color = %s, pre_color = %s WHERE id = %s
-            """, (name, orden, color, pre_color, belt_id))
+                UPDATE belts
+                SET name = %s,
+                    orden = %s,
+                    color = %s,
+                    pre_color = %s,
+                    grades = %s,
+                    grade_color = %s
+                WHERE id = %s
+            """, (name, orden, color, pre_color, grades, grade_color, belt_id))
             conn.commit()
         except:
             conn.rollback(); raise
@@ -215,7 +228,8 @@ class BeltsRepository:
                         COALESCE(b.id,    0)                 AS belt_id,
                         COALESCE(b.name, 'Sin cinturón')     AS belt_name,
                         COALESCE(b.color, '#888888')          AS belt_color,
-                        COALESCE(b.orden, 0)                  AS belt_orden
+                        COALESCE(b.orden, 0)                  AS belt_orden,
+                        COALESCE(b.grades, 0)                 AS belt_grades
                     FROM students s
                     JOIN people p  ON p.id  = s.id_person
                     JOIN status st ON st.id = s.id_status
@@ -228,12 +242,13 @@ class BeltsRepository:
                 """, (martial_art_id,))
                 return [
                     {
-                        "id":         r[0],
-                        "nombre":     r[1],
-                        "belt_id":    r[2],
-                        "belt_name":  r[3],
-                        "belt_color": r[4],
-                        "belt_orden": r[5],
+                        "id":          r[0],
+                        "nombre":      r[1],
+                        "belt_id":     r[2],
+                        "belt_name":   r[3],
+                        "belt_color":  r[4],
+                        "belt_orden":  r[5],
+                        "belt_grades": r[6],
                     }
                     for r in cur.fetchall()
                 ]
@@ -246,14 +261,58 @@ class BeltsRepository:
         try:
             cur = conn.cursor()
             cur.execute("""
-                SELECT id, name, color, orden
+                SELECT id, name, orden,
+                    COALESCE(color, '#888888'),
+                    pre_color,
+                    COALESCE(grades, 0),
+                    COALESCE(grade_color, '#FFFFFF')
                 FROM belts
                 WHERE id_martial_art = %s
-                  AND (orden > %s OR %s = 0)
+                AND (orden > %s OR %s = 0)
                 ORDER BY orden ASC NULLS LAST, name
             """, (martial_art_id, current_orden, current_orden))
+
             return [
-                {"id": r[0], "name": r[1], "color": r[2] or "#888888", "orden": r[3]}
+                {
+                    "id": r[0],
+                    "name": r[1],
+                    "orden": r[2],
+                    "color": r[3],
+                    "pre_color": r[4],
+                    "grades": r[5],
+                    "grade_color": r[6],
+                }
+                for r in cur.fetchall()
+            ]
+        finally:
+            cur.close()
+            db.release(conn)
+ 
+    def get_next_belts(self, martial_art_id: int, current_orden: int) -> list:
+        """Cinturones disponibles para ascender (orden > actual)."""
+        conn = db.get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, name, orden,
+                    COALESCE(color, '#888888'),
+                    pre_color,
+                    COALESCE(grades, 0),
+                    COALESCE(grade_color, '#FFFFFF')
+                FROM belts
+                WHERE id_martial_art = %s
+                ORDER BY orden ASC NULLS LAST, name
+            """, (martial_art_id,))
+            return [
+                {
+                    "id": r[0],
+                    "name": r[1],
+                    "orden": r[2],
+                    "color": r[3],
+                    "pre_color": r[4],
+                    "grades": r[5],
+                    "grade_color": r[6],
+                }
                 for r in cur.fetchall()
             ]
         finally:

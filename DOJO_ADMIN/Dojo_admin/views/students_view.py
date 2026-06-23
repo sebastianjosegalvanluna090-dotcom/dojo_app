@@ -444,11 +444,15 @@ class StudentsView(QWidget):
         table.setColumnCount(8)
         table.setHorizontalHeaderLabels([
             "ID", "Nombre", "Documento", "Teléfono",
-            "Email", "Estado", "Arte Marcial", "Categoría"
+            "Email", "Estado", "Categoría", "Cinturón"
         ])
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
         table.setColumnWidth(0, 50)
+        table.setColumnWidth(6, 100)
+        table.setColumnWidth(7, 180)
         table.verticalHeader().setVisible(False)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -498,32 +502,125 @@ class StudentsView(QWidget):
         if not rows:
             self.lbl_count.setText("No se encontraron estudiantes.")
             return
+
         self.table.setRowCount(len(rows))
         for i, row in enumerate(rows):
-            values = [row[0], row[1], row[2], row[3] or "—",
-                      row[4] or "—", row[5], row[6], row[7]]
+            # índices: 0=id, 1=nombre, 2=doc, 3=phone, 4=email,
+            #          5=estado, 6=categoria, 7=fecha, 8=id_person,
+            #          9=fname, 10=lname, 11=birth, 12=doc_num,
+            #          13=id_type_doc, 14=id_status, 15=cat_id,
+            #          16=cinturon, 17=belt_color, 18=belt_pre_color,
+            #          19=arte_marcial
+
+            values = [
+                row[0],        # ID
+                row[1],        # Nombre
+                row[2],        # Documento
+                row[3] or "—", # Teléfono
+                row[4] or "—", # Email
+                row[5],        # Estado
+                row[6] or "—", # Categoría
+            ]
+
             for j, val in enumerate(values):
                 item = QTableWidgetItem(str(val))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-                if j >= 5:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
-                else:
-                     item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
 
-                if j == 5:
+                if j == 5:  # Estado
                     estado = str(val).lower()
                     if "activo" in estado or "active" in estado:
                         item.setForeground(QColor(GREEN))
-                    elif "inactive" in estado or "suspendido" in estado or "inactivo" in estado:
+                    elif "inactivo" in estado or "suspendido" in estado or "inactive" in estado:
                         item.setForeground(QColor("#FF4444"))
                     else:
                         item.setForeground(QColor(YELLOW))
+
                 self.table.setItem(i, j, item)
+
+            # ── Col 7: barra visual del cinturón + nombre arte marcial
+            belt_name      = str(row[16]) if len(row) > 16 else "Sin cinturón"
+            belt_color     = str(row[17]) if len(row) > 17 and row[17] else "#888888"
+            belt_pre_color = str(row[18]) if len(row) > 18 and row[18] else None
+            art_name       = str(row[19]) if len(row) > 19 else ""
+
+            belt_widget = self._make_belt_cell(belt_name, belt_color, belt_pre_color, art_name)
+            self.table.setCellWidget(i, 7, belt_widget)
             self.table.setRowHeight(i, 44)
+
         total = len(rows)
         self.lbl_count.setText(
             f"{total} estudiante{'s' if total != 1 else ''} encontrado{'s' if total != 1 else ''}"
         )
+
+    def _make_belt_cell(self, name: str, color: str, pre_color: str = None, art_name: str = "") -> QWidget:
+        w = QWidget()
+        w.setStyleSheet("background: transparent;")
+        hl = QHBoxLayout(w)
+        hl.setContentsMargins(8, 4, 8, 4)
+        hl.setSpacing(8)
+
+        light_colors = {"#FFFFFF", "#FFD700", "#FF8C00", "#FFFF00", "#FFA500", "#FFFACD"}
+        belt_color = color or "#888888"
+        border_c = "#999999" if belt_color.upper() in light_colors else belt_color
+
+        # Contenedor de la barra
+        bar_container = QWidget()
+        bar_container.setFixedSize(44, 18)
+        bar_layout = QHBoxLayout(bar_container)
+        bar_layout.setContentsMargins(0, 0, 0, 0)
+        bar_layout.setSpacing(0)
+
+        if pre_color and pre_color != "None":
+            bar_left = QFrame()
+            bar_left.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {belt_color};
+                    border-top-left-radius: 3px;
+                    border-bottom-left-radius: 3px;
+                    border: 1.5px solid {border_c};
+                    border-right: none;
+                }}
+            """)
+            bar_stripe = QFrame()
+            bar_stripe.setFixedWidth(7)
+            bar_stripe.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {pre_color};
+                    border-radius: 0px;
+                }}
+            """)
+            bar_right = QFrame()
+            bar_right.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {belt_color};
+                    border-top-right-radius: 3px;
+                    border-bottom-right-radius: 3px;
+                    border: 1.5px solid {border_c};
+                    border-left: none;
+                }}
+            """)
+            bar_layout.addWidget(bar_left, 2)
+            bar_layout.addWidget(bar_stripe)
+            bar_layout.addWidget(bar_right, 2)
+        else:
+            bar_full = QFrame()
+            bar_full.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {belt_color};
+                    border-radius: 3px;
+                    border: 1.5px solid {border_c};
+                }}
+            """)
+            bar_layout.addWidget(bar_full, 1)
+
+        # Texto: arte marcial (no el nombre del cinturón)
+        display = art_name if art_name and art_name != "Sin arte" else name
+        lbl = QLabel(display)
+        lbl.setStyleSheet(f"color: {TEXT_PRI}; font-size: 12px; background: transparent;")
+
+        hl.addWidget(bar_container)
+        hl.addWidget(lbl, 1)
+        return w
 
     def _get_selected_id(self):
         row = self.table.currentRow()

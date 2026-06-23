@@ -4,8 +4,8 @@ from PyQt6.QtWidgets import (
     QDialog, QLineEdit, QComboBox, QMessageBox, QScrollArea,
     QSizePolicy, QListWidget, QListWidgetItem
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPainter, QColor
 from repositories.belts_repository import BeltsRepository
 
 BG_MAIN  = "#0D0D0D"
@@ -40,7 +40,57 @@ FIELD_STYLE = f"""
         border: 1px solid {BORDER}; border-radius: 6px;
     }}
 """
+class BeltPreviewWidget(QWidget):
+    def __init__(self, color, grades=0, martial_art=None):
+        super().__init__()
+        self.color = color or "#FFFFFF"
+        self.grades = grades or 0
+        self.martial_art = martial_art
+        self.setFixedHeight(40)
 
+    def paintEvent(self, event):
+        painter = QPainter(self)
+
+        # 🎨 cinturón base
+        belt_color = QColor(self.color)
+        painter.setBrush(belt_color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(0, 10, 200, 20, 10, 10)
+
+        # 🔥 lógica por arte marcial
+        if _is_bjj(self.martial_art):
+            self.draw_bjj_stripes(painter)
+        else:
+            self.draw_default_grades(painter)
+
+    def draw_bjj_stripes(self, painter):
+        bar_x = 160
+        bar_width = 30
+
+        # barra negra o roja
+        if self.color.lower() == "#000000":
+            bar_color = QColor("red")
+        else:
+            bar_color = QColor("black")
+
+        painter.setBrush(bar_color)
+        painter.drawRect(bar_x, 10, bar_width, 20)
+
+        # stripes
+        stripe_width = 4
+        spacing = 3
+
+        for i in range(min(self.grades, 4)):
+            x = bar_x + 5 + i * (stripe_width + spacing)
+            painter.setBrush(QColor("white"))
+            painter.drawRect(x, 12, stripe_width, 16)
+
+    def draw_default_grades(self, painter):
+        if self.grades <= 0:
+            return
+
+        painter.setBrush(QColor("white"))
+        painter.drawRect(150, 12, 10, 16)
 
 def make_card(accent=None):
     card = QFrame()
@@ -67,6 +117,13 @@ def _belt_border(color: str) -> str:
     """Returns a visible border color for light-colored belts."""
     light = {"#FFFFFF", "#FFD700", "#FF8C00", "#FFFF00", "#FFA500", "#FFFACD"}
     return "#999999" if color.upper() in light else color
+
+
+def _is_bjj(name: str) -> bool:
+    if not name:
+        return False
+    n = name.strip().lower()
+    return n in {"brazilian jiu-jitsu", "bjj", "jiu-jitsu brasileño", "jiu jitsu brasileño"}
 
 
 # ─── MartialArtDialog ─────────────────────────────────────────────────
@@ -140,14 +197,16 @@ class MartialArtDialog(QDialog):
 
 # ─── BeltDialog ───────────────────────────────────────────────────────
 class BeltDialog(QDialog):
-    def __init__(self, repo, martial_art_id, belt=None, parent=None):
+    def __init__(self, repo, martial_art_id, martial_art_name="", belt=None, parent=None):
         super().__init__(parent)
         self.repo = repo
         self.martial_art_id = martial_art_id
+        self.martial_art_name = martial_art_name or ""
         self.belt = belt
         self.is_edit = belt is not None
         self.setWindowTitle("Editar Cinturón" if self.is_edit else "Nuevo Cinturón")
-        self.setFixedSize(580, 200)
+        self.setMinimumSize(760, 390)
+        self.resize(760, 390)
         self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self.setStyleSheet(f"background-color: #111111; color: {TEXT_PRI};")
 
@@ -157,17 +216,18 @@ class BeltDialog(QDialog):
 
         # ── Grid de campos
         grid = QGridLayout()
-        grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(8)
-        grid.setColumnStretch(0, 2)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(10)
+
+        grid.setColumnStretch(0, 3)
         grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(2, 1)
-        grid.setColumnStretch(3, 1)
+        grid.setColumnStretch(2, 2)
+        grid.setColumnStretch(3, 2)
 
         grid.addWidget(_lbl("NOMBRE"), 0, 0)
         grid.addWidget(_lbl("ORDEN"), 0, 1)
-        grid.addWidget(_lbl("COLOR"), 0, 2)
-        grid.addWidget(_lbl("PRE-COLOR (opc.)"), 0, 3)
+        grid.addWidget(_lbl("COLOR"), 2, 0)
+        grid.addWidget(_lbl("PRE-COLOR (opc.)"), 2, 1)
 
         # Nombre
         self.inp_name = QLineEdit()
@@ -195,7 +255,7 @@ class BeltDialog(QDialog):
         self.inp_color = QLineEdit()
         self.inp_color.setPlaceholderText("#FFFFFF")
         self.inp_color.setStyleSheet(FIELD_STYLE)
-        self.inp_color.setFixedWidth(82)
+        self.inp_color.setFixedWidth(120)
         if self.is_edit:
             self.inp_color.setText(belt.get("color", "") or "")
 
@@ -218,7 +278,7 @@ class BeltDialog(QDialog):
         color_hl.addWidget(self.inp_color)
         color_hl.addWidget(self.color_preview)
         color_hl.addWidget(btn_pick)
-        grid.addWidget(color_w, 1, 2)
+        grid.addWidget(color_w, 3, 0)
 
         # Pre-color
         pre_w = QWidget()
@@ -230,7 +290,7 @@ class BeltDialog(QDialog):
         self.inp_pre_color = QLineEdit()
         self.inp_pre_color.setPlaceholderText("Sin pre")
         self.inp_pre_color.setStyleSheet(FIELD_STYLE)
-        self.inp_pre_color.setFixedWidth(82)
+        self.inp_pre_color.setFixedWidth(120)
         if self.is_edit:
             self.inp_pre_color.setText(belt.get("pre_color", "") or "")
 
@@ -253,9 +313,65 @@ class BeltDialog(QDialog):
         pre_hl.addWidget(self.inp_pre_color)
         pre_hl.addWidget(self.pre_color_preview)
         pre_hl.addWidget(btn_pick_pre)
-        grid.addWidget(pre_w, 1, 3)
+        grid.addWidget(pre_w, 3, 1)
 
         root.addLayout(grid)
+
+        root.addWidget(_lbl("GRADOS / STRIPES (solo BJJ, 0-4)"))
+        self.inp_grados = QLineEdit()
+        self.inp_grados.setPlaceholderText("0")
+        self.inp_grados.setStyleSheet(FIELD_STYLE)
+        self.update_ui_by_martial_art(self.martial_art_name)
+
+        if self.is_edit:
+            self.inp_grados.setText(str(belt.get("grades") or 0))
+        root.addWidget(self.inp_grados)
+
+        # Color de grados
+        grade_color_w = QWidget()
+        grade_color_w.setStyleSheet("background: transparent;")
+        grade_color_hl = QHBoxLayout(grade_color_w)
+        grade_color_hl.setContentsMargins(0, 0, 0, 0)
+        grade_color_hl.setSpacing(4)
+
+        self.inp_grade_color = QLineEdit()
+        self.inp_grade_color.setPlaceholderText("#FFFFFF")
+        self.inp_grade_color.setStyleSheet(FIELD_STYLE)
+        self.inp_grade_color.setFixedWidth(120)
+
+        if self.is_edit:
+            self.inp_grade_color.setText(belt.get("grade_color", "#FFFFFF") or "#FFFFFF")
+        else:
+            self.inp_grade_color.setText("#FFFFFF")
+
+        self.grade_color_preview = QFrame()
+        self.grade_color_preview.setFixedSize(32, 36)
+        self._update_grade_color_preview(self.inp_grade_color.text())
+
+        btn_pick_grade = QPushButton("🎨")
+        btn_pick_grade.setFixedSize(34, 36)
+        btn_pick_grade.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_pick_grade.setStyleSheet(f"""
+            QPushButton {{
+                background:#1C1C1C;
+                border:1.5px solid {BORDER};
+                border-radius:6px;
+                font-size:14px;
+            }}
+            QPushButton:hover {{ border-color:{RED}; }}
+        """)
+        btn_pick_grade.clicked.connect(self._pick_grade_color)
+
+        self.inp_grade_color.textChanged.connect(
+            lambda t: self._update_grade_color_preview(t) if len(t) == 7 and t.startswith("#") else None
+        )
+
+        grade_color_hl.addWidget(self.inp_grade_color)
+        grade_color_hl.addWidget(self.grade_color_preview)
+        grade_color_hl.addWidget(btn_pick_grade)
+
+        grid.addWidget(_lbl("COLOR GRADOS"), 2, 2)
+        grid.addWidget(grade_color_w, 3, 2)
 
         # ── Error + botones
         self.lbl_error = QLabel("")
@@ -300,11 +416,23 @@ class BeltDialog(QDialog):
             return
         color = self.inp_color.text().strip() or None
         pre_color = self.inp_pre_color.text().strip() or None
+        grade_color = self.inp_grade_color.text().strip() or "#FFFFFF"
+        try:
+            grados = int(self.inp_grados.text().strip()) if self.inp_grados.text().strip() else 0
+
+            if _is_bjj(self.martial_art_name):
+                grados = max(0, min(4, grados))
+            else:
+                grados = max(0, min(10, grados))
+
+        except ValueError:
+            self.lbl_error.setText("⚠ Grados debe ser un número entre 0 y 10.")
+            return
         try:
             if self.is_edit:
-                self.repo.update_belt(self.belt["id"], name, orden, color, pre_color)
+                self.repo.update_belt(self.belt["id"], name, orden, color, pre_color, grados, grade_color)
             else:
-                self.repo.create_belt(self.martial_art_id, name, orden, color, pre_color)
+                self.repo.create_belt(self.martial_art_id, name, orden, color, pre_color, grados, grade_color)
             self.accept()
         except Exception as e:
             self.lbl_error.setText(f"Error: {e}")
@@ -353,6 +481,38 @@ class BeltDialog(QDialog):
             hex_color = color.name().upper()
             self.inp_pre_color.setText(hex_color)
             self._update_pre_color_preview(hex_color)
+
+    def _update_grade_color_preview(self, color: str):
+        try:
+            border = _belt_border(color)
+            self.grade_color_preview.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {color};
+                    border-radius: 6px;
+                    border: 2px solid {border};
+                }}
+            """)
+        except Exception:
+            pass
+
+
+    def _pick_grade_color(self):
+        from PyQt6.QtWidgets import QColorDialog
+        from PyQt6.QtGui import QColor
+
+        current = self.inp_grade_color.text().strip() or "#FFFFFF"
+        color = QColorDialog.getColor(QColor(current), self, "Color de las líneas de grado")
+
+        if color.isValid():
+            hex_color = color.name().upper()
+            self.inp_grade_color.setText(hex_color)
+            self._update_grade_color_preview(hex_color)
+    
+    def update_ui_by_martial_art(self, martial_art_name):
+        if _is_bjj(martial_art_name):
+            self.inp_grados.setPlaceholderText("Stripes (0-4)")
+        else:
+            self.inp_grados.setPlaceholderText("Grados / Dan")
 
 
 # ─── RequirementDialog ────────────────────────────────────────────────
@@ -444,17 +604,21 @@ class BeltsView(QWidget):
     def __init__(self):
         super().__init__()
         self.repo = BeltsRepository()
+
         self._selected_ma = None
         self._selected_belt = None
+        self.current_martial_art_name = ""
+
         self._build_ui()
         self._load_martial_arts()
+    
 
     def _build_ui(self):
         self.setStyleSheet(f"background-color: {BG_MAIN};")
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(16)
-        
+
         # Header
         hdr = QHBoxLayout()
         title = QLabel("🥋  Artes Marciales & Cinturones")
@@ -662,7 +826,7 @@ class BeltsView(QWidget):
             # Pequeño feedback visual
             self.lbl_status.setText("✓  Cinturón actualizado correctamente")
             QTimer = __import__("PyQt6.QtCore", fromlist=["QTimer"]).QTimer
-            QTimer.singleShot(3000, lambda: self.lbl_status.setText(""))
+            QTimer.singleShot(3000, self._clear_status_safe)
 
     def _load_martial_arts(self):
         self.ma_list.clear()
@@ -676,10 +840,18 @@ class BeltsView(QWidget):
     def _on_ma_selected(self, current, previous):
         if not current:
             return
+
         self._selected_ma = current.data(Qt.ItemDataRole.UserRole)
-        self.belt_title.setText(f"CINTURONES — {self._selected_ma['name'].upper()}")
-        self._load_belts()
+
+        martial_art_name = self._selected_ma["name"]
+        self.current_martial_art_name = martial_art_name
+        self.selected_martial_art_name = martial_art_name
+
+        self.belt_title.setText(f"CINTURONES — {martial_art_name.upper()}")
+
         self._clear_requirements()
+        self._load_belts()
+
 
     def _load_belts(self):
         if not self._selected_ma:
@@ -688,12 +860,12 @@ class BeltsView(QWidget):
         belts = self.repo.get_belts(self._selected_ma["id"])
         self.belt_table.setRowCount(len(belts))
 
-        for i, belt in enumerate(belts):
-            # ── Col 0: Orden
+        for row, belt in enumerate(belts):
             orden_item = QTableWidgetItem(str(belt["orden"] or "—"))
             orden_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             orden_item.setForeground(QColor(TEXT_MUT))
-            self.belt_table.setItem(i, 0, orden_item)
+            self.belt_table.setItem(row, 0, orden_item)
+
 
             # ── Col 1: Nombre + barra de color
             cell_w = QWidget()
@@ -704,26 +876,82 @@ class BeltsView(QWidget):
 
             lbl_name = QLabel(belt["name"])
             lbl_name.setStyleSheet(f"color: {TEXT_PRI}; font-size: 13px; font-weight: 500;")
-            lbl_name.setFixedWidth(110)
+            lbl_name.setFixedWidth(130)
 
             belt_color = belt.get("color") or "#888888"
             pre_color  = belt.get("pre_color")
             border_c   = _belt_border(belt_color)
+            is_bjj     = _is_bjj(self._selected_ma.get("name"))
 
             # Belt bar — outer QFrame acts as the border+radius container
             bar_container = QFrame()
-            bar_container.setFixedHeight(22)
-            bar_container.setMinimumWidth(60)
+            bar_container.setFixedHeight(20)
+            bar_container.setMinimumWidth(130)
             bar_container.setStyleSheet(f"""
                 QFrame {{
                     background-color: {belt_color};
-                    border-radius: 5px;
+                    border-radius: 6px;
                     border: 1.5px solid {border_c};
                 }}
             """)
 
-            if pre_color:
-                # Inner layout: [color fill] [thin stripe] [color fill]
+            if is_bjj:
+                grados = belt.get("grades") or 0
+                grados = max(0, min(4, grados))
+                stripe_box_color = "red" if belt_color.upper() == "#000000" else "black"
+
+                inner = QHBoxLayout(bar_container)
+                inner.setContentsMargins(0, 0, 4, 0)
+                inner.setSpacing(0)
+
+                inner.addStretch()
+
+                stripe_box = QFrame()
+                stripe_box.setFixedSize(45, 18)
+
+                stripe_box.setStyleSheet(f"""
+                    QFrame {{
+                        background-color: {stripe_box_color};
+                        border-top-left-radius: 0px;
+                        border-bottom-left-radius: 0px;
+                        border-top-right-radius: 5px;
+                        border-bottom-right-radius: 5px;
+                        border: none;
+                    }}
+                """)
+
+                stripe_hl = QHBoxLayout(stripe_box)
+                stripe_hl.setContentsMargins(3, 0, 3, 0)
+                stripe_hl.setSpacing(4)
+                stripe_hl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+                max_stripes = 4
+
+                for stripe_idx in range(max_stripes):
+                    s = QFrame()
+                    s.setFixedSize(4, 14)
+
+                    if stripe_idx >= max_stripes - grados:
+                        s.setStyleSheet("""
+                            QFrame {
+                                background-color: white;
+                                border-radius: 1px;
+                                border: none;
+                            }
+                        """)
+                    else:
+                        s.setStyleSheet("""
+                            QFrame {
+                                background: transparent;
+                                border: none;
+                            }
+                        """)
+
+                    stripe_hl.addWidget(s)
+
+                inner.addWidget(stripe_box, 0, Qt.AlignmentFlag.AlignVCenter)
+
+            elif pre_color:
                 inner = QHBoxLayout(bar_container)
                 inner.setContentsMargins(0, 0, 0, 0)
                 inner.setSpacing(0)
@@ -741,14 +969,55 @@ class BeltsView(QWidget):
                 inner.addWidget(left, 3)
                 inner.addWidget(stripe)
                 inner.addWidget(right, 1)
+            
+            else:
+                grados = belt.get("grades") or 0
+                grados = max(0, min(10, grados))
+
+                grade_color = belt.get("grade_color") or "#FFFFFF"
+
+                inner = QHBoxLayout(bar_container)
+                inner.setContentsMargins(0, 0, 6, 0)
+                inner.setSpacing(2)
+
+                inner.addStretch()
+
+                grade_box = QFrame()
+                grade_box.setFixedHeight(18)
+                grade_box.setStyleSheet("background: transparent; border:none;")
+
+                grade_hl = QHBoxLayout(grade_box)
+                grade_hl.setContentsMargins(0, 0, 0, 0)
+                grade_hl.setSpacing(3)
+                grade_hl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+                # máximo 10 líneas
+                for grade_idx in range(10):
+                    s = QFrame()
+                    s.setFixedSize(3, 14)
+
+                    # 🔥 GRADOS DE DERECHA A IZQUIERDA
+                    if grade_idx >= 10 - grados:
+                        s.setStyleSheet(f"""
+                            QFrame {{
+                                background-color: {grade_color};
+                                border-radius:1px;
+                            }}
+                        """)
+                    else:
+                        s.setStyleSheet("background: transparent; border:none;")
+
+                    grade_hl.addWidget(s)
+
+                inner.addWidget(grade_box, 0, Qt.AlignmentFlag.AlignVCenter)
 
             cell_hl.addWidget(lbl_name)
             cell_hl.addWidget(bar_container, 1)
 
             name_item = QTableWidgetItem("")
             name_item.setData(Qt.ItemDataRole.UserRole, belt)
-            self.belt_table.setItem(i, 1, name_item)
-            self.belt_table.setCellWidget(i, 1, cell_w)
+            self.belt_table.setItem(row, 1, name_item)
+            self.belt_table.setCellWidget(row, 1, cell_w)
 
             # ── Col 2: Botones
             btn_w = QWidget()
@@ -779,10 +1048,11 @@ class BeltsView(QWidget):
 
             btn_hl.addWidget(btn_e)
             btn_hl.addWidget(btn_d)
-            self.belt_table.setCellWidget(i, 2, btn_w)
-            self.belt_table.setRowHeight(i, 48)
+            self.belt_table.setCellWidget(row, 2, btn_w)
+            self.belt_table.setRowHeight(row, 48)
 
         self._clear_requirements()
+    
 
     def _on_belt_selected(self, current, previous):
         if not current:
@@ -813,6 +1083,13 @@ class BeltsView(QWidget):
         self.req_list.clear()
         self.req_title.setText("REQUISITOS")
         self._selected_belt = None
+
+    def _clear_status_safe(self):
+        try:
+            if hasattr(self, "lbl_status") and self.lbl_status is not None:
+                self.lbl_status.setText("")
+        except RuntimeError:
+            pass
 
     # ── Martial Art CRUD
     def _create_martial_art(self):
@@ -855,12 +1132,23 @@ class BeltsView(QWidget):
         if not self._selected_ma:
             QMessageBox.information(self, "Aviso", "Selecciona un arte marcial primero.")
             return
-        dlg = BeltDialog(self.repo, self._selected_ma["id"], parent=self)
+        dlg = BeltDialog(
+            self.repo,
+            self._selected_ma["id"],
+            martial_art_name=self._selected_ma["name"],
+            parent=self
+        )
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._load_belts()
 
     def _edit_belt(self, belt):
-        dlg = BeltDialog(self.repo, self._selected_ma["id"], belt=belt, parent=self)
+        dlg = BeltDialog(
+            self.repo,
+            self._selected_ma["id"],
+            martial_art_name=self._selected_ma["name"],
+            belt=belt,
+            parent=self
+        )
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._load_belts()
 
@@ -915,23 +1203,50 @@ class BeltsView(QWidget):
                 QMessageBox.critical(self, "Error", str(e))
 
 class BeltBar(QWidget):
-    """Mini barra de color de cinturón reutilizable."""
-    def __init__(self, color: str, pre_color: str = None, height: int = 16, parent=None):
-        super().__init__(parent)
-        self.setFixedHeight(height)
-        self.setMinimumWidth(40)
-        self._color     = color or "#888888"
-        self._pre_color = pre_color
-        border = "#999999" if self._color.upper() in {
-            "#FFFFFF","#FFD700","#FF8C00","#FFFF00","#FFA500","#FFFACD"
-        } else self._color
-        self.setStyleSheet(f"""
-            QWidget {{
-                background-color: {self._color};
-                border-radius: 4px;
-                border: 1.5px solid {border};
-            }}
-        """)
+    def __init__(self, color, grades=0, martial_art_name=""):
+        super().__init__()
+        self.color = color or "#FFFFFF"
+        self.grades = grades or 0
+        self.martial_art = martial_art_name
+        self.setFixedSize(220, 40)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+
+        # 🎨 cinturón base
+        painter.setBrush(QColor(self.color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(0, 10, 200, 20, 10, 10)
+
+        # 🔥 lógica clave
+        if _is_bjj(self.martial_art):
+            self.draw_bjj(painter)
+        else:
+            self.draw_default(painter)
+
+    def draw_bjj(self, painter):
+        bar_x = 160
+
+        # barra negra o roja
+        if self.color.lower() == "#000000":
+            painter.setBrush(QColor("red"))
+        else:
+            painter.setBrush(QColor("black"))
+
+        painter.drawRect(bar_x, 10, 30, 20)
+
+        # stripes
+        for i in range(min(self.grades, 4)):
+            x = bar_x + 25 - i * 6
+            painter.setBrush(QColor("white"))
+            painter.drawRect(x, 12, 4, 16)
+
+    def draw_default(self, painter):
+        if self.grades <= 0:
+            return
+
+        painter.setBrush(QColor("white"))
+        painter.drawRect(150, 12, 10, 16)
  
  
 class PromoteStudentDialog(QDialog):
