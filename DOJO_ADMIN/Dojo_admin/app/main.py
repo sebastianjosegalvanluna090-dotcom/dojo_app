@@ -204,6 +204,8 @@ class MainWindow(QMainWindow):
             self._show_students()
         elif clicked_btn == self.btn_belts:
             self._show_belts()
+        elif clicked_btn == self.btn_classes:
+            self._show_classes()
         else:
             self._show_placeholder(clicked_btn.text().strip())
 
@@ -227,6 +229,12 @@ class MainWindow(QMainWindow):
     def _show_students(self):
         self._clear_content()
         view = StudentsView()
+        self.content_layout.addWidget(view)
+    
+    def _show_classes(self):
+        self._clear_content()
+        from views.classes_view import ClassesView
+        view = ClassesView()
         self.content_layout.addWidget(view)
 
     def _show_belts(self):

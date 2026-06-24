@@ -1,3 +1,5 @@
+# ─── USER_REPOSITORY ─────────────────────────────────────────────
+
 from database.connection import db
 from core.security import hash_password
 

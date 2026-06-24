@@ -340,14 +340,17 @@ class BeltsRepository:
                 raise ValueError("Este instructor no tiene permiso para promover en este arte marcial.")
  
             # Upsert cinturón actual en students_belts
+            # Buscar si ya tiene cinturón EN ESTE arte marcial específico
             cur.execute("""
-                SELECT id FROM students_belts WHERE id_student = %s
-            """, (student_id,))
+                SELECT sb.id FROM students_belts sb
+                JOIN belts b ON b.id = sb.id_belt
+                WHERE sb.id_student = %s AND b.id_martial_art = %s
+            """, (student_id, martial_art_id))
             existing = cur.fetchone()
             if existing:
                 cur.execute("""
-                    UPDATE students_belts SET id_belt = %s WHERE id_student = %s
-                """, (belt_id, student_id))
+                    UPDATE students_belts SET id_belt = %s WHERE id = %s
+                """, (belt_id, existing[0]))
             else:
                 cur.execute("""
                     INSERT INTO students_belts (id_student, id_belt)

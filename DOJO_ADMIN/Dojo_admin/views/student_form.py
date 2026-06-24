@@ -1,3 +1,4 @@
+# ─── STUDENT_FORM ─────────────────────────────────────────────
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLineEdit, QComboBox, QDateEdit, QPushButton,
@@ -239,6 +240,7 @@ class StudentForm(QDialog):
         self.repo       = repo
         self.student_id = student_id
         self.is_edit    = student_id is not None
+        self.created_credentials = None
 
         self.setWindowTitle("Editar Estudiante" if self.is_edit else "Nuevo Estudiante")
         self.setFixedSize(620, 720)
@@ -428,6 +430,35 @@ class StudentForm(QDialog):
 
         root.addLayout(grid2)
         root.addSpacing(12)
+        root.addSpacing(20)
+        root.addWidget(_divider())
+        root.addSpacing(20)
+        root.addWidget(self._section_header("ACCESO DEL ESTUDIANTE"))
+        root.addSpacing(12)
+
+        access_grid = QGridLayout()
+        access_grid.setHorizontalSpacing(14)
+        access_grid.setVerticalSpacing(12)
+        access_grid.setColumnStretch(0, 1)
+        access_grid.setColumnStretch(1, 1)
+
+        self.inp_username = QLineEdit()
+        self.inp_username.setPlaceholderText("Opcional. Si queda vacío se genera automático")
+        self.inp_username.setStyleSheet(FIELD_STYLE)
+
+        self.inp_password = QLineEdit()
+        self.inp_password.setPlaceholderText(
+            "Opcional. Si queda vacío usa el documento" if not self.is_edit else "Dejar vacío para no cambiar"
+        )
+        self.inp_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.inp_password.setStyleSheet(FIELD_STYLE)
+
+        access_grid.addWidget(_lbl("Usuario de acceso"), 0, 0)
+        access_grid.addWidget(_lbl("Contraseña"), 0, 1)
+        access_grid.addWidget(self.inp_username, 1, 0)
+        access_grid.addWidget(self.inp_password, 1, 1)
+
+        root.addLayout(access_grid)
 
         self.lbl_error = QLabel("")
         self.lbl_error.setStyleSheet(f"color: {ERROR_C}; font-size: 12px;")
@@ -638,6 +669,11 @@ class StudentForm(QDialog):
             if self.cmb_category.itemData(i) == data["category_id"]:
                 self.cmb_category.setCurrentIndex(i); break
 
+        user = self.repo.get_user_by_student_id(self.student_id)
+
+        if user:
+            self.inp_username.setText(user.get("username") or "")
+
     # ── Guardar ───────────────────────────────────────────────────────
     def _save(self):
         self.lbl_error.setText("")
@@ -666,6 +702,8 @@ class StudentForm(QDialog):
             "id_type_document": self.cmb_doctype.currentData(),
             "id_status":        self.cmb_status.currentData(),
             "category_id":      self.cmb_category.currentData(),
+            "username":         self.inp_username.text().strip(),
+            "password":         self.inp_password.text().strip(),
         }
 
         self.btn_save.setEnabled(False)
@@ -674,7 +712,9 @@ class StudentForm(QDialog):
             if self.is_edit:
                 self.repo.update(self.student_id, data)
             else:
-                self.repo.create(data)
+                result = self.repo.create(data)
+                self.created_credentials = result
+
             self.accept()
         except Exception as e:
             self.lbl_error.setText(f"Error: {e}")
