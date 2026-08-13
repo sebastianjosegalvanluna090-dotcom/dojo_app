@@ -1,0 +1,7 @@
+{
+  "language": "es",
+  "desktop_notifications": true,
+  "notification_minutes_before": 15,
+  "notification_sound": true,
+  "minimize_to_tray": true
+}
